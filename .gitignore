@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.superpowers/
+docs/superpowers/
+BEGINNER_AND_INTERVIEW_BIBLE*.*
+NVIDIA_GTC_MUNICH_POCKET_GUIDE.*
+Yuze_Chen_CV*.*
+.DS_Store
+*.db
