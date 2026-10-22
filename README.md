@@ -2,6 +2,10 @@
 
 **Quality-Adjusted Damodaran R&D Capitalization & AI Engineering Telemetry Audit (US • UK • EU Equities)**
 
+[![Live Research Terminal](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://capex-to-code.streamlit.app/)
+
+- **Live Web Application**: **[https://capex-to-code.streamlit.app/](https://capex-to-code.streamlit.app/)** *(Open directly in any desktop or mobile browser—no local installation required)*
+
 Under US GAAP and IFRS, 100% of corporate R&D is expensed immediately on the income statement. Standard financial statements treat \$1 / €1 spent on CUDA kernels, custom silicon, and open-weight foundation models identically to \$1 / €1 diluted by third-party API wrappers, external vendor coordination (*Dienstleistersteuerung*), and agile overhead.
 
 **CapEx-to-Code** cross-examines executive filing claims against verifiable open-source and academic engineering output (Hugging Face Hub, OpenAlex citation graphs, GitHub repositories, and developer forums) to estimate a **Productive R&D Conversion Rate ($\eta$)**, and feeds $\eta$ into **Aswath Damodaran's R&D Capitalization framework** to re-estimate Adjusted EBIT, Adjusted ROIC, and Implied Fair Forward P/E.
@@ -9,6 +13,8 @@ Under US GAAP and IFRS, 100% of corporate R&D is expensed immediately on the inc
 ---
 
 ## Getting Started & Usage
+
+> **Quick Access (Cloud Hosted)**: You can explore the full interactive terminal online at **[https://capex-to-code.streamlit.app/](https://capex-to-code.streamlit.app/)**, or run it locally using the instructions below.
 
 ### Prerequisites
 
