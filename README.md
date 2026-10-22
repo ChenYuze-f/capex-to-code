@@ -139,26 +139,38 @@ python -m unittest discover -s tests -v
 
 Because open-source repository stars, model downloads, and academic citations follow heavy power-law distributions, raw counts are transformed via `math.log1p` before combining with domain keyword density:
 
-$$S_{\text{proof}} = w_{\text{AI}} \cdot S_{\text{AI\_Stack}} + w_{\text{Sys}} \cdot S_{\text{Systems\_Stack}} \qquad (w_{\text{AI}} = 0.65,\; w_{\text{Sys}} = 0.35)$$
+$$
+S_{\text{proof}} = w_{\text{AI}} \cdot S_{\text{AI}} + w_{\text{Sys}} \cdot S_{\text{Systems}} \qquad (w_{\text{AI}} = 0.65,\; w_{\text{Sys}} = 0.35)
+$$
 
 The **AI-Washing Divergence Index ($\text{AWDI}$)** measures the positive gap between executive filing claims ($S_{\text{claim}}$) and verified engineering proof ($S_{\text{proof}}$), scaled by developer friction ($S_{\text{friction}}$):
 
-$$\text{AWDI} = \text{clip}\!\left(\max\big(0,\; S_{\text{claim}} - S_{\text{proof}}\big) \times \left(1 + \frac{S_{\text{friction}}}{100}\right),\; 0,\; 100\right)$$
+$$
+\text{AWDI} = \text{clip}\left(\max(0,\; S_{\text{claim}} - S_{\text{proof}}) \times \left(1 + \frac{S_{\text{friction}}}{100}\right),\; 0,\; 100\right)
+$$
 
 - If $S_{\text{proof}} \ge S_{\text{claim}}$ (grounded engineering execution), $\text{AWDI} = 0.0$.
 - The **Productive R&D Conversion Factor ($\eta_{\text{conv}}$)** determines the share of annual R&D that forms durable intangible capital:
 
-$$\eta_{\text{conv}} = \text{clip}\!\left(\frac{0.65 \cdot S_{\text{proof}} + 0.35 \cdot (100 - S_{\text{friction}}) - 0.25 \cdot \text{AWDI}}{100},\; 0.15,\; 0.95\right)$$
+$$
+\eta_{\text{conv}} = \text{clip}\left(\frac{0.65 \cdot S_{\text{proof}} + 0.35 \cdot (100 - S_{\text{friction}}) - 0.25 \cdot \text{AWDI}}{100},\; 0.15,\; 0.95\right)
+$$
 
 ### 2. Quality-Adjusted Damodaran R&D Capitalization
 
-Given sector economic amortization life $L \in [3, 6]$ years and historical R&D series $\{R\&D_t, R\&D_{t-1}, \dots, R\&D_{t-L}\}$:
+Given sector economic amortization life $L \in [3, 6]$ years and historical R&D series $(RD_t, RD_{t-1}, \dots, RD_{t-L})$:
 
-$$R\&D_{\text{prod}, k} = R\&D_{t-k} \cdot \eta_{\text{conv}}, \qquad R\&D_{\text{waste}, k} = R\&D_{t-k} \cdot (1 - \eta_{\text{conv}})$$
+$$
+RD_{\text{prod}, k} = RD_{t-k} \cdot \eta_{\text{conv}}, \qquad RD_{\text{waste}, k} = RD_{t-k} \cdot (1 - \eta_{\text{conv}})
+$$
 
-$$RC_{\text{asset}} = \sum_{k=0}^{L-1} R\&D_{\text{prod}, k} \cdot \frac{L - k}{L}, \qquad A_{\text{RD}} = \sum_{k=1}^{L} \frac{R\&D_{\text{prod}, k}}{L}$$
+$$
+RC_{\text{asset}} = \sum_{k=0}^{L-1} RD_{\text{prod}, k} \cdot \frac{L - k}{L}, \qquad A_{\text{RD}} = \sum_{k=1}^{L} \frac{RD_{\text{prod}, k}}{L}
+$$
 
-$$\text{EBIT}_{\text{adj}} = \text{EBIT}_{\text{rep}} + R\&D_{\text{prod}, t} - A_{\text{RD}}, \qquad \text{ROIC}_{\text{adj}} = \frac{\text{EBIT}_{\text{adj}} \cdot (1 - \tau)}{\text{IC}_{\text{rep}} + RC_{\text{asset}}}$$
+$$
+\text{EBIT}_{\text{adj}} = \text{EBIT}_{\text{rep}} + RD_{\text{prod}, t} - A_{\text{RD}}, \qquad \text{ROIC}_{\text{adj}} = \frac{\text{EBIT}_{\text{adj}} \cdot (1 - \tau)}{\text{IC}_{\text{rep}} + RC_{\text{asset}}}
+$$
 
 ---
 

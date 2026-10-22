@@ -1089,7 +1089,7 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
                 **Plain-English Definition**: Re-estimates Return on Invested Capital (ROIC) by treating **Productive R&D** as a multi-year intangible capital asset amortized over $L$ years (3–6 years by sector) following Professor Aswath Damodaran's capitalization framework.
                 
                 **Mathematical Formula**:
-                $$\\text{EBIT}_{\\text{adj}} = \\text{EBIT}_{\\text{rep}} + R\\&D_t \\cdot \\eta_{\\text{conv}} - A_{\\text{RD}}$$
+                $$\\text{EBIT}_{\\text{adj}} = \\text{EBIT}_{\\text{rep}} + RD_t \\cdot \\eta_{\\text{conv}} - A_{\\text{RD}}$$
                 $$\\text{ROIC}_{\\text{adj}} = \\frac{\\text{EBIT}_{\\text{adj}} \\cdot (1 - \\tau)}{\\text{IC}_{\\text{rep}} + RC_{\\text{asset}}}$$
                 
                 **How to Interpret**:
