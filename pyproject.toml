@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "capex-to-code"
+version = "2.0.0"
+description = "Quality-Adjusted Damodaran R&D Capitalization & AI Engineering Telemetry Audit"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Yuze Chen", email = "yuze.chen@tum.de" }
+]
+dependencies = [
+    "streamlit>=1.38.0",
+    "pandas>=2.2.0",
+    "plotly>=5.22.0",
+    "requests>=2.32.0",
+    "yfinance>=0.2.40",
+]
+
+[project.scripts]
+capex-to-code = "cli:main"
