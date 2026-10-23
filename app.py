@@ -1,6 +1,6 @@
 """
 CapEx-to-Code v2.0: Global R&D Capitalization & AI Reality Audit
-Institutional Quantitative Equity & Technical Due Diligence Terminal
+Institutional Quantitative Equity & Multi-LLM Technical Due Diligence Terminal
 """
 
 from __future__ import annotations
@@ -14,7 +14,10 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from ai_audit_engine import (
+    LLM_PROVIDER_PRESETS,
     load_deepseek_api_key,
+    load_provider_api_key,
+    run_custom_llm_company_search,
     run_deepseek_technical_audit,
     score_three_way_evidence,
 )
@@ -130,18 +133,32 @@ def recompute_universe_dataframe(
 def _chart_theme_tokens(theme_mode: str) -> Dict[str, str]:
     if theme_mode == "light":
         return {
-            "text": "#0f172a",
+            "text": "#0F172A",
             "muted": "#475569",
-            "grid": "rgba(15, 23, 42, 0.09)",
-            "line": "#64748b",
-            "marker_border": "#0f172a",
+            "grid": "rgba(15, 23, 42, 0.07)",
+            "line": "rgba(15, 23, 42, 0.24)",
+            "marker_border": "#0F172A",
+            "accent": "#059669",
+            "secondary": "#2563EB",
+            "neutral": "#64748B",
+            "warn": "#D97706",
+            "neg": "#E11D48",
+            "quad_pos": "rgba(5, 150, 105, 0.05)",
+            "quad_neg": "rgba(225, 29, 72, 0.04)",
         }
     return {
-        "text": "#f8fafc",
-        "muted": "#cbd5e1",
-        "grid": "rgba(148, 163, 184, 0.15)",
-        "line": "#94a3b8",
-        "marker_border": "#ffffff",
+        "text": "#F8FAFC",
+        "muted": "#94A3B8",
+        "grid": "rgba(148, 163, 184, 0.10)",
+        "line": "rgba(148, 163, 184, 0.28)",
+        "marker_border": "#F8FAFC",
+        "accent": "#10B981",
+        "secondary": "#3B82F6",
+        "neutral": "#64748B",
+        "warn": "#F59E0B",
+        "neg": "#F43F5E",
+        "quad_pos": "rgba(16, 185, 129, 0.07)",
+        "quad_neg": "rgba(244, 63, 94, 0.06)",
     }
 
 
@@ -166,7 +183,6 @@ def _deoverlap_scatter_points(
                 dx = px[i] - px[j]
                 dy = py[i] - py[j]
                 if abs(dx) < min_dx and abs(dy) < min_dy:
-                    # Compute normalized push vector
                     if abs(dx) < 0.01 and abs(dy) < 0.01:
                         angle = (i + 1) * 1.1
                         dx = math.cos(angle)
@@ -178,7 +194,6 @@ def _deoverlap_scatter_points(
                     py[i] = max(-58.0, min(55.0, py[i] + push_y))
                     py[j] = max(-58.0, min(55.0, py[j] - push_y))
 
-    # Assign label position based on nearest vertical neighbor to prevent label collision
     text_positions: List[str] = []
     for i in range(n):
         nearest_dy = 0.0
@@ -210,10 +225,10 @@ def build_global_matrix_chart(
     """
     tokens = _chart_theme_tokens(theme_mode)
     regime_colors = {
-        REGIME_VERIFIED_COMPOUNDER: "#10b981",  # Emerald
-        REGIME_QUALITY_MOAT: "#3b82f6",         # Royal Blue
-        REGIME_AI_WASHING_RISK: "#ef4444",      # Crimson
-        REGIME_DILUTION_TRAP: "#f59e0b",        # Amber
+        REGIME_VERIFIED_COMPOUNDER: tokens["accent"],
+        REGIME_QUALITY_MOAT: tokens["secondary"],
+        REGIME_AI_WASHING_RISK: tokens["neg"],
+        REGIME_DILUTION_TRAP: tokens["warn"],
     }
 
     work_df = df.copy().reset_index(drop=True)
@@ -230,14 +245,13 @@ def build_global_matrix_chart(
     y_min = min(-56.0, float(work_df["Disp_Y"].min()) - 12.0)
     y_max = max(44.0, float(work_df["Disp_Y"].max()) + 12.0)
 
-    # Quadrant background shading
     fig.add_shape(
         type="rect",
         x0=68,
         x1=103,
         y0=0,
         y1=y_max,
-        fillcolor="rgba(16, 185, 129, 0.06)",
+        fillcolor=tokens["quad_pos"],
         line=dict(width=0),
         layer="below",
     )
@@ -247,31 +261,31 @@ def build_global_matrix_chart(
         x1=68,
         y0=y_min,
         y1=0,
-        fillcolor="rgba(239, 68, 68, 0.05)",
+        fillcolor=tokens["quad_neg"],
         line=dict(width=0),
         layer="below",
     )
 
-    fig.add_vline(x=68, line_width=1.4, line_dash="dash", line_color=tokens["line"])
-    fig.add_hline(y=0, line_width=1.4, line_dash="dash", line_color=tokens["line"])
+    fig.add_vline(x=68, line_width=1.0, line_dash="dot", line_color=tokens["line"])
+    fig.add_hline(y=0, line_width=1.0, line_dash="dot", line_color=tokens["line"])
 
     fig.add_annotation(
         x=101,
         y=y_max - 2.0,
         xanchor="right",
         yanchor="top",
-        text="<b>VERIFIED AI COMPOUNDER ZONE</b> (Proof ≥ 68, Fair P/E > Market P/E)",
+        text="<b>Verified compounders</b> · Proof ≥ 68, Fair P/E above market",
         showarrow=False,
-        font=dict(size=12, color="#10b981"),
+        font=dict(size=12, color=tokens["accent"]),
     )
     fig.add_annotation(
         x=2,
         y=y_min + 2.0,
         xanchor="left",
         yanchor="bottom",
-        text="<b>AI-WASHING & R&D DILUTION ZONE</b> (Proof < 68, Valuation Downside)",
+        text="<b>Narrative &amp; dilution risk</b> · Proof &lt; 68, implied multiple downside",
         showarrow=False,
-        font=dict(size=12, color="#ef4444"),
+        font=dict(size=12, color=tokens["neg"]),
     )
 
     for regime_label in [
@@ -284,13 +298,12 @@ def build_global_matrix_chart(
         if sub.empty:
             continue
 
-        # Moderate, well-proportioned bubble sizes (15px to 30px) to prevent giant overlaps
         sizes = [
-            max(15.0, min(30.0, 12.0 + math.log1p(float(v)) * 4.6))
+            max(14.0, min(28.0, 11.5 + math.log1p(float(v)) * 4.4))
             for v in sub["RD_Current_B"]
         ]
         line_widths = [
-            3.0 if (highlight_ticker and t == highlight_ticker) else 1.5
+            2.6 if (highlight_ticker and t == highlight_ticker) else 1.2
             for t in sub["Ticker"]
         ]
 
@@ -320,17 +333,16 @@ def build_global_matrix_chart(
                 name=regime_label,
                 text=[f"<b>{t}</b>" for t in sub["Ticker"]],
                 textposition=list(sub["Text_Pos"].values),
-                textfont=dict(size=12.5, color=tokens["text"]),
+                textfont=dict(size=12, color=tokens["text"]),
                 marker=dict(
                     size=sizes,
-                    color=regime_colors.get(regime_label, "#64748b"),
+                    color=regime_colors.get(regime_label, tokens["neutral"]),
                     opacity=0.90,
                     line=dict(width=line_widths, color=tokens["marker_border"]),
                 ),
                 customdata=custom,
                 hovertemplate=(
-                    "<b>%{customdata[0]} (%{customdata[1]} • %{customdata[2]})</b><br>"
-                    "────────────────────────────────────<br>"
+                    "<b>%{customdata[0]} (%{customdata[1]} · %{customdata[2]})</b><br>"
                     "Verifiable Technical Proof: <b>%{customdata[11]:.1f} / 100</b><br>"
                     "AI-Washing Divergence (AWDI): <b>%{customdata[3]:.1f} / 100</b><br>"
                     "Productive R&D Conversion (η): <b>%{customdata[4]:.1f}%</b><br>"
@@ -344,28 +356,28 @@ def build_global_matrix_chart(
 
     fig.update_layout(
         title=dict(
-            text="<b>Global R&D Technical Proof vs. Implied Valuation Spread</b> (De-Overlapped View • Hover for Exact Figures)",
-            font=dict(size=16.5, color=tokens["text"]),
+            text="<b>Technical Proof vs. Implied Valuation Spread</b> · Hover any security for unadjusted coordinates",
+            font=dict(family="Space Grotesk, Plus Jakarta Sans, sans-serif", size=16, color=tokens["text"]),
             x=0.0,
             y=0.96,
         ),
-        font=dict(size=13, color=tokens["text"]),
+        font=dict(family="Plus Jakarta Sans, -apple-system, BlinkMacSystemFont, sans-serif", size=12.5, color=tokens["text"]),
         xaxis=dict(
             title=dict(
-                text="<b>Verifiable Technical Proof Score (0–100)</b> — 65% Contemporary AI / 35% Computer Systems",
-                font=dict(size=13.5, color=tokens["text"]),
+                text="Verifiable Technical Proof Score (0–100) · 65% Contemporary AI, 35% Computer Systems",
+                font=dict(size=13, color=tokens["muted"]),
             ),
-            tickfont=dict(size=12.5, color=tokens["text"]),
+            tickfont=dict(size=12, color=tokens["muted"]),
             range=[0, 103],
             gridcolor=tokens["grid"],
             zeroline=False,
         ),
         yaxis=dict(
             title=dict(
-                text="<b>Implied Valuation Spread (%)</b> — (Fair P/E − Market P/E) / Market P/E",
-                font=dict(size=13.5, color=tokens["text"]),
+                text="Implied Valuation Spread (%) · (Fair P/E − Market P/E) / Market P/E",
+                font=dict(size=13, color=tokens["muted"]),
             ),
-            tickfont=dict(size=12.5, color=tokens["text"]),
+            tickfont=dict(size=12, color=tokens["muted"]),
             range=[y_min, y_max],
             gridcolor=tokens["grid"],
             zeroline=False,
@@ -373,13 +385,13 @@ def build_global_matrix_chart(
         legend=dict(
             orientation="h",
             yanchor="top",
-            y=-0.17,
-            xanchor="center",
-            x=0.5,
-            font=dict(size=12.5, color=tokens["text"]),
+            y=-0.16,
+            xanchor="left",
+            x=0.0,
+            font=dict(size=12, color=tokens["text"]),
         ),
-        margin=dict(l=55, r=35, t=60, b=95),
-        height=550,
+        margin=dict(l=50, r=30, t=55, b=90),
+        height=540,
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
@@ -390,7 +402,7 @@ def build_rd_capitalization_bridge(
     row: Dict[str, Any],
     theme_mode: str = "light",
 ) -> go.Figure:
-    """Build a spacious Damodaran R&D Capitalization & EBIT Adjustment Bridge chart."""
+    """Build a high-contrast Damodaran R&D Capitalization & EBIT Adjustment Bridge chart."""
     tokens = _chart_theme_tokens(theme_mode)
     sym = row.get("CurrSym", "$")
     rep_rd = float(row["RD_Current_B"])
@@ -400,14 +412,20 @@ def build_rd_capitalization_bridge(
     rc_asset = float(row["RD_Capital_Asset_B"])
 
     categories = [
-        "1. Reported Annual R&D Spend",
-        "2. Productive AI/Tech Capitalized",
-        "3. Deadweight Bureaucracy Write-Off",
-        "4. Annual R&D Amortization (A_RD)",
-        "5. Unamortized R&D Balance Sheet Asset",
+        "Reported annual R&D expenditure",
+        "Productive R&D capitalized",
+        "Deadweight bureaucracy write-off",
+        "Annual R&D amortization charge",
+        "Unamortized R&D balance-sheet asset",
     ]
     values = [rep_rd, prod_rd, waste_rd, amort_rd, rc_asset]
-    colors = ["#64748b", "#10b981", "#ef4444", "#2563eb", "#0ea5e9"]
+    colors = [
+        tokens["neutral"],
+        tokens["accent"],
+        tokens["neg"],
+        tokens["secondary"],
+        tokens["accent"],
+    ]
 
     fig = go.Figure(
         go.Bar(
@@ -417,30 +435,30 @@ def build_rd_capitalization_bridge(
             marker=dict(color=colors),
             text=[f"<b>{sym}{v:.2f}B</b>" for v in values],
             textposition="outside",
-            textfont=dict(size=13.5, color=tokens["text"]),
+            textfont=dict(size=13, color=tokens["text"]),
             hovertemplate="<b>%{y}</b>: " + sym + "%{x:.2f}B<extra></extra>",
         )
     )
     max_x = max(values + [0.5]) * 1.28
     fig.update_layout(
         title=dict(
-            text=f"<b>Damodaran R&D Capitalization Schedule — {row['Name']} ({row['Ticker']} • {row['Amortization_Years']}-Year Amortization)</b>",
-            font=dict(size=16.5, color=tokens["text"]),
+            text=f"<b>Damodaran R&D Capitalization Schedule</b> · {row['Name']} ({row['Ticker']}, {row['Amortization_Years']}-year life)",
+            font=dict(family="Space Grotesk, Plus Jakarta Sans, sans-serif", size=16, color=tokens["text"]),
             x=0.0,
         ),
-        font=dict(size=13.5, color=tokens["text"]),
+        font=dict(family="Plus Jakarta Sans, -apple-system, BlinkMacSystemFont, sans-serif", size=13, color=tokens["text"]),
         xaxis=dict(
-            title=dict(text=f"Billions ({row.get('Currency', 'USD')})", font=dict(size=13.5, color=tokens["text"])),
-            tickfont=dict(size=12.5, color=tokens["text"]),
+            title=dict(text=f"Billions ({row.get('Currency', 'USD')})", font=dict(size=12.5, color=tokens["muted"])),
+            tickfont=dict(size=12, color=tokens["muted"]),
             range=[0, max_x],
             gridcolor=tokens["grid"],
         ),
         yaxis=dict(
             autorange="reversed",
-            tickfont=dict(size=13.5, color=tokens["text"]),
+            tickfont=dict(size=13, color=tokens["text"]),
         ),
-        margin=dict(l=20, r=60, t=60, b=50),
-        height=420,
+        margin=dict(l=20, r=60, t=55, b=45),
+        height=400,
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
@@ -452,15 +470,15 @@ def build_three_way_radar_bar(
     row: Dict[str, Any],
     theme_mode: str = "light",
 ) -> go.Figure:
-    """Build a spacious horizontal bar chart comparing the 3-way sub-scores."""
+    """Build a high-contrast horizontal bar chart comparing the 3-way sub-scores."""
     tokens = _chart_theme_tokens(theme_mode)
     labels = [
-        "1. Executive Filing Claim Intensity (S_claim)",
-        "2. Contemporary AI Execution (65% Priority Weight)",
-        "3. Computer Systems Foundation (35% Weight)",
-        "4. Composite Verifiable Proof (S_proof)",
-        "5. Insider Friction & Wrapper Penalty (S_friction)",
-        "6. AI-Washing Divergence Index (AWDI)",
+        "Filing narrative claim intensity",
+        "Contemporary AI execution (65% weight)",
+        "Computer systems foundation (35% weight)",
+        "Composite verifiable technical proof",
+        "Developer friction & wrapper penalty",
+        "AI-washing divergence index (AWDI)",
     ]
     scores = [
         float(row["Claim_Score"]),
@@ -470,7 +488,14 @@ def build_three_way_radar_bar(
         float(row["Friction_Score"]),
         float(row["AWDI"]),
     ]
-    colors = ["#0284c7", "#10b981", "#059669", "#2563eb", "#d97706", "#ef4444"]
+    colors = [
+        tokens["neutral"],
+        tokens["accent"],
+        tokens["accent"],
+        tokens["secondary"],
+        tokens["warn"],
+        tokens["neg"],
+    ]
 
     fig = go.Figure(
         go.Bar(
@@ -478,31 +503,31 @@ def build_three_way_radar_bar(
             y=labels,
             orientation="h",
             marker=dict(color=colors),
-            text=[f"<b>{s:.1f} / 100</b>" for s in scores],
+            text=[f"<b>{s:.1f}</b>" for s in scores],
             textposition="outside",
-            textfont=dict(size=13.5, color=tokens["text"]),
+            textfont=dict(size=13, color=tokens["text"]),
             hovertemplate="<b>%{y}</b>: %{x:.1f} / 100<extra></extra>",
         )
     )
     fig.update_layout(
         title=dict(
-            text=f"<b>Three-Way AI Reality vs. Narrative Decomposition — {row['Name']} ({row['Ticker']})</b>",
-            font=dict(size=16.5, color=tokens["text"]),
+            text=f"<b>Three-Way Evidence Decomposition</b> · {row['Name']} ({row['Ticker']})",
+            font=dict(family="Space Grotesk, Plus Jakarta Sans, sans-serif", size=16, color=tokens["text"]),
             x=0.0,
         ),
-        font=dict(size=13.5, color=tokens["text"]),
+        font=dict(family="Plus Jakarta Sans, -apple-system, BlinkMacSystemFont, sans-serif", size=13, color=tokens["text"]),
         xaxis=dict(
             range=[0, 115],
-            title=dict(text="Score (0–100 Scale)", font=dict(size=13.5, color=tokens["text"])),
-            tickfont=dict(size=12.5, color=tokens["text"]),
+            title=dict(text="Score (0–100 scale)", font=dict(size=12.5, color=tokens["muted"])),
+            tickfont=dict(size=12, color=tokens["muted"]),
             gridcolor=tokens["grid"],
         ),
         yaxis=dict(
             autorange="reversed",
-            tickfont=dict(size=13.5, color=tokens["text"]),
+            tickfont=dict(size=13, color=tokens["text"]),
         ),
-        margin=dict(l=20, r=60, t=60, b=50),
-        height=420,
+        margin=dict(l=20, r=60, t=55, b=45),
+        height=400,
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
@@ -510,49 +535,212 @@ def build_three_way_radar_bar(
     return fig
 
 
-def _inject_theme_css(theme_mode: str) -> None:
-    """Inject modern typography (`Plus Jakarta Sans` + `JetBrains Mono`) and Light/Dark theme variables."""
-    if theme_mode == "light":
-        bg_main = "#f8fafc"
-        bg_sidebar = "#f1f5f9"
-        bg_card = "#ffffff"
-        bg_subtle = "#f1f5f9"
-        text_main = "#0f172a"
-        text_muted = "#475569"
-        border_col = "#cbd5e1"
-        accent_border = "#059669"
-        hero_bg = "linear-gradient(135deg, #ffffff 0%, #f0fdf4 55%, #eff6ff 100%)"
-        hero_border = "#bbf7d0"
+def _get_active_llm_config() -> Dict[str, Any]:
+    """Retrieve the user's active BYOK Multi-Provider LLM configuration from session state."""
+    if "byok_provider" not in st.session_state:
+        st.session_state["byok_provider"] = "DeepSeek"
+    if "byok_keys" not in st.session_state:
+        st.session_state["byok_keys"] = {}
+    if "byok_models" not in st.session_state:
+        st.session_state["byok_models"] = {}
+    if "byok_urls" not in st.session_state:
+        st.session_state["byok_urls"] = {}
+    if "byok_enabled" not in st.session_state:
+        st.session_state["byok_enabled"] = True
+
+    provider = st.session_state["byok_provider"]
+    preset = LLM_PROVIDER_PRESETS.get(provider, LLM_PROVIDER_PRESETS["DeepSeek"])
+
+    session_key = st.session_state["byok_keys"].get(provider, "").strip()
+    env_key = load_provider_api_key(provider)
+    effective_key = session_key or env_key
+
+    model = st.session_state["byok_models"].get(provider, preset["default_model"]).strip() or preset["default_model"]
+    base_url = st.session_state["byok_urls"].get(provider, preset["base_url"]).strip() or preset["base_url"]
+
+    key_source = (
+        "User Session Key"
+        if session_key
+        else ("Local .env Key" if env_key else "No Key (Deterministic Engine)")
+    )
+
+    return {
+        "provider": provider,
+        "model": model,
+        "base_url": base_url,
+        "api_key": effective_key,
+        "has_key": bool(effective_key),
+        "key_source": key_source,
+        "enabled": bool(st.session_state["byok_enabled"]),
+        "badge": preset.get("badge", provider),
+        "supports_web_search": bool(preset.get("supports_web_search", False)),
+    }
+
+
+def _render_byok_config_controls(location_prefix: str = "sidebar") -> Dict[str, Any]:
+    """Render interactive BYOK Multi-LLM API Key & Endpoint configuration controls."""
+    cfg = _get_active_llm_config()
+    provider_names = list(LLM_PROVIDER_PRESETS.keys())
+
+    selected_provider = st.selectbox(
+        "LLM Provider / Search Engine",
+        options=provider_names,
+        index=provider_names.index(cfg["provider"]) if cfg["provider"] in provider_names else 0,
+        key=f"{location_prefix}_provider_select",
+    )
+    if selected_provider != st.session_state["byok_provider"]:
+        st.session_state["byok_provider"] = selected_provider
+        st.rerun()
+
+    preset = LLM_PROVIDER_PRESETS[selected_provider]
+    current_session_key = st.session_state["byok_keys"].get(selected_provider, "")
+
+    entered_key = st.text_input(
+        f"{selected_provider} API Key (session-only, never saved to disk)",
+        value=current_session_key,
+        type="password",
+        placeholder=preset.get("key_placeholder", "sk-..."),
+        key=f"{location_prefix}_api_key_{selected_provider}",
+    )
+    if entered_key != current_session_key:
+        st.session_state["byok_keys"][selected_provider] = entered_key.strip()
+        st.rerun()
+
+    model_options = list(preset["models"]) + ["Custom Model ID..."]
+    stored_model = st.session_state["byok_models"].get(selected_provider, preset["default_model"])
+    default_idx = model_options.index(stored_model) if stored_model in preset["models"] else 0
+
+    chosen_model_opt = st.selectbox(
+        "Model Name",
+        options=model_options,
+        index=default_idx,
+        key=f"{location_prefix}_model_select_{selected_provider}",
+    )
+
+    if chosen_model_opt == "Custom Model ID..." or selected_provider == "OpenRouter / Custom Endpoint":
+        custom_model = st.text_input(
+            "Custom Model Identifier",
+            value=stored_model,
+            placeholder="e.g. deepseek-reasoner, gpt-4o, sonar-pro",
+            key=f"{location_prefix}_custom_model_{selected_provider}",
+        )
+        st.session_state["byok_models"][selected_provider] = custom_model.strip() or preset["default_model"]
     else:
-        bg_main = "#0b0f19"
-        bg_sidebar = "#111827"
-        bg_card = "#161f30"
-        bg_subtle = "#1e293b"
-        text_main = "#f8fafc"
-        text_muted = "#94a3b8"
-        border_col = "#334155"
-        accent_border = "#10b981"
-        hero_bg = "linear-gradient(135deg, #0f172a 0%, #062c22 55%, #0f2547 100%)"
-        hero_border = "#059669"
+        st.session_state["byok_models"][selected_provider] = chosen_model_opt
+
+    if selected_provider == "OpenRouter / Custom Endpoint":
+        stored_url = st.session_state["byok_urls"].get(selected_provider, preset["base_url"])
+        custom_url = st.text_input(
+            "OpenAI-Compatible Chat Completions Endpoint URL",
+            value=stored_url,
+            placeholder="https://openrouter.ai/api/v1/chat/completions",
+            key=f"{location_prefix}_custom_url_{selected_provider}",
+        )
+        st.session_state["byok_urls"][selected_provider] = custom_url.strip() or preset["base_url"]
+
+    enabled_toggle = st.toggle(
+        "Enable Live LLM Audit & Search",
+        value=st.session_state["byok_enabled"],
+        key=f"{location_prefix}_byok_enable_toggle",
+    )
+    st.session_state["byok_enabled"] = enabled_toggle
+
+    updated_cfg = _get_active_llm_config()
+    status_color = "#10B981" if updated_cfg["has_key"] else "#F59E0B"
+    st.markdown(
+        f"<div style='font-size:0.82rem;padding:0.5rem 0.7rem;border-radius:6px;"
+        f"background:rgba(16,185,129,0.08);border-left:3px solid {status_color};margin-top:0.25rem;'>"
+        f"<b>Gateway Status:</b> {html.escape(updated_cfg['key_source'])} · "
+        f"<code>{html.escape(updated_cfg['model'])}</code></div>",
+        unsafe_allow_html=True,
+    )
+    return updated_cfg
+
+
+def _inject_theme_css(theme_mode: str) -> None:
+    """
+    Inject high-contrast modern quantitative fintech design system:
+    `Space Grotesk` (bold geometric display & stats) + `Plus Jakarta Sans` (body & tables)
+    + `JetBrains Mono` (tickers, metrics, API badges) with vibrant Emerald, Cobalt, and Rose accents.
+    """
+    if theme_mode == "light":
+        bg_main = "#F3F6FA"
+        bg_sidebar = "#FFFFFF"
+        bg_card = "#FFFFFF"
+        bg_subtle = "#EAF0F7"
+        bg_obsidian = "#0B111E"
+        text_main = "#0B111E"
+        text_muted = "#475569"
+        accent = "#059669"
+        accent_bright = "#10B981"
+        accent_soft = "rgba(5, 150, 105, 0.10)"
+        cobalt = "#2563EB"
+        cobalt_soft = "rgba(37, 99, 235, 0.10)"
+        neg = "#E11D48"
+        neg_soft = "rgba(225, 29, 72, 0.10)"
+        warn = "#D97706"
+        border_col = "#DCE4F0"
+    else:
+        bg_main = "#060911"
+        bg_sidebar = "#0B101D"
+        bg_card = "#0E1525"
+        bg_subtle = "#151F34"
+        bg_obsidian = "#090E1A"
+        text_main = "#F8FAFC"
+        text_muted = "#94A3B8"
+        accent = "#10B981"
+        accent_bright = "#34D399"
+        accent_soft = "rgba(16, 185, 129, 0.15)"
+        cobalt = "#3B82F6"
+        cobalt_soft = "rgba(59, 130, 246, 0.16)"
+        neg = "#F43F5E"
+        neg_soft = "rgba(244, 63, 94, 0.16)"
+        warn = "#F59E0B"
+        border_col = "rgba(148, 163, 184, 0.15)"
 
     st.markdown(
         f"""
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap');
 
         html, body, .stApp {{
             background-color: {bg_main} !important;
             color: {text_main} !important;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-        }}
-        h1, h2, h3, .hero-headline, .summary-title {{
             font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+            font-variant-numeric: tabular-nums;
         }}
-        code, [data-testid="stMetricValue"] {{
-            font-family: 'JetBrains Mono', monospace !important;
+        h1, h2, h3, .display-h1, .display-h2, .bento-stat {{
+            font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif !important;
+            letter-spacing: -0.03em !important;
+            color: {text_main} !important;
         }}
-        [data-testid="stHeader"] {{
-            background-color: {bg_main} !important;
+        [data-testid="stMetricValue"] {{
+            font-family: 'Space Grotesk', sans-serif !important;
+            font-variant-numeric: tabular-nums !important;
+            font-weight: 700 !important;
+            letter-spacing: -0.03em !important;
+        }}
+        /* Eliminate top header overlap and obstruction */
+        header[data-testid="stHeader"] {{
+            background: transparent !important;
+            border-bottom: none !important;
+            box-shadow: none !important;
+            height: 2.25rem !important;
+            pointer-events: none !important;
+            z-index: 20 !important;
+        }}
+        header[data-testid="stHeader"] * {{
+            pointer-events: auto !important;
+        }}
+        [data-testid="stDecoration"] {{
+            display: none !important;
+        }}
+        [data-testid="stToolbar"] {{
+            opacity: 0.65;
+            transition: opacity 0.2s ease;
+        }}
+        [data-testid="stToolbar"]:hover {{
+            opacity: 1;
         }}
         [data-testid="stSidebar"] {{
             background-color: {bg_sidebar} !important;
@@ -562,133 +750,413 @@ def _inject_theme_css(theme_mode: str) -> None:
             color: {text_main} !important;
         }}
         .block-container {{
-            padding-top: 3.4rem !important;
-            padding-bottom: 3rem !important;
-            max-width: 1280px !important;
+            padding-top: 2.85rem !important;
+            padding-bottom: 3.5rem !important;
+            max-width: 1380px !important;
         }}
-        h1, h2, h3, h4, h5, h6, p, span, label, [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {{
+        p, span, label, [data-testid="stMetricLabel"] {{
             color: {text_main} !important;
         }}
-        .hero-banner {{
-            background: {hero_bg};
-            border: 1px solid {hero_border};
-            border-radius: 16px;
-            padding: 2.6rem 2.8rem;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 10px 30px -10px rgba(16, 185, 129, 0.14);
+        .stButton > button {{
+            border-radius: 6px !important;
+            font-family: 'Plus Jakarta Sans', sans-serif !important;
+            font-weight: 600 !important;
+            letter-spacing: -0.01em !important;
+            transition: all 140ms ease !important;
         }}
-        .hero-badge {{
+        .stButton > button[kind="primary"] {{
+            background-color: {cobalt} !important;
+            color: #FFFFFF !important;
+            border: none !important;
+        }}
+        .stButton > button[kind="primary"]:hover {{
+            background-color: {accent} !important;
+            color: #FFFFFF !important;
+        }}
+        .stButton > button[kind="secondary"] {{
+            background-color: {bg_card} !important;
+            color: {text_main} !important;
+            border: 1px solid {border_col} !important;
+        }}
+        .stTextInput > div > div > input, .stSelectbox > div > div, .stTextArea textarea {{
+            border-radius: 6px !important;
+            background-color: {bg_card} !important;
+            color: {text_main} !important;
+            border: 1px solid {border_col} !important;
+        }}
+        .top-nav-shell {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background-color: {bg_card};
+            border: 1px solid {border_col};
+            border-radius: 10px;
+            padding: 0.75rem 1.25rem;
+            margin-bottom: 1.5rem;
+        }}
+        /* High-Impact Institutional Brand Header */
+        .top-brand-box {{
+            display: flex;
+            align-items: center;
+            padding: 0.15rem 0;
+            user-select: none;
+        }}
+        .brand-text-col {{
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-width: 0;
+        }}
+        .brand-title-line {{
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            flex-wrap: nowrap;
+        }}
+        .brand-main-title {{
+            font-family: 'Space Grotesk', sans-serif !important;
+            font-size: 1.68rem !important;
+            font-weight: 800 !important;
+            letter-spacing: -0.035em !important;
+            color: {text_main} !important;
+            white-space: nowrap !important;
+            line-height: 1.15 !important;
+        }}
+        .brand-to {{
+            color: {accent} !important;
+            font-weight: 800 !important;
+            margin: 0 1px;
+        }}
+        .brand-pill-badge {{
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background-color: {cobalt_soft};
+            color: {cobalt} !important;
+            white-space: nowrap;
+            letter-spacing: 0.04em;
+        }}
+        .brand-subtitle {{
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.73rem;
+            font-weight: 600;
+            color: {text_muted};
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 2px;
+            white-space: nowrap;
+        }}
+        .byok-status-pill {{
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background-color: {accent_soft};
+            color: {accent} !important;
+            white-space: nowrap;
+        }}
+        .kicker-pill {{
             display: inline-block;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.78rem;
-            font-weight: 700;
+            font-size: 0.76rem;
+            font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.08em;
+            letter-spacing: 0.06em;
             padding: 5px 12px;
             border-radius: 999px;
-            background: rgba(16, 185, 129, 0.16);
-            color: #059669 !important;
-            border: 1px solid rgba(16, 185, 129, 0.4);
-            margin-bottom: 1rem;
+            background-color: {cobalt_soft};
+            color: {cobalt} !important;
+            margin-bottom: 0.95rem;
         }}
-        .gradient-accent {{
-            background: linear-gradient(90deg, #059669 0%, #0284c7 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        .display-h1 {{
+            font-size: clamp(2.45rem, 3.8vw, 3.55rem);
+            font-weight: 700 !important;
+            line-height: 1.03;
+            letter-spacing: -0.035em !important;
+            margin: 0 0 1.15rem 0;
+        }}
+        .hl-emerald {{
+            color: {accent} !important;
+            border-bottom: 4px solid {accent_bright};
+            padding-bottom: 2px;
+        }}
+        .hl-rose {{
+            color: {neg} !important;
+            font-weight: 700;
+        }}
+        .hl-cobalt {{
+            color: {cobalt} !important;
+            font-weight: 700;
+        }}
+        .hero-lead {{
+            font-size: 1.04rem;
+            line-height: 1.64;
+            color: {text_muted};
+            margin: 0 0 1.35rem 0;
+            max-width: 60ch;
+        }}
+        .hero-stat-grid {{
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 1.35rem;
+        }}
+        .hero-stat-card {{
+            background-color: {bg_card};
+            border: 1px solid {border_col};
+            border-radius: 8px;
+            padding: 0.85rem 1.0rem;
+            border-top: 3px solid {cobalt};
+        }}
+        .hero-stat-card.emerald {{
+            border-top-color: {accent_bright};
+        }}
+        .hero-stat-card.rose {{
+            border-top-color: {neg};
+        }}
+        .hero-stat-num {{
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.55rem;
+            font-weight: 700;
+            line-height: 1.1;
+            color: {text_main};
+            margin-bottom: 0.2rem;
+        }}
+        .hero-stat-num.emerald {{
+            color: {accent} !important;
+        }}
+        .hero-stat-num.rose {{
+            color: {neg} !important;
+        }}
+        .hero-stat-num.cobalt {{
+            color: {cobalt} !important;
+        }}
+        .hero-stat-label {{
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: {text_muted};
+            line-height: 1.3;
+        }}
+        /* High-Contrast Dark Obsidian Telemetry Matrix (pops in both Light & Dark modes) */
+        .obsidian-ledger {{
+            background-color: {bg_obsidian};
+            color: #F8FAFC !important;
+            border-radius: 12px;
+            padding: 1.45rem 1.55rem;
+            border: 1px solid rgba(59, 130, 246, 0.28);
+        }}
+        .obsidian-ledger * {{
+            color: #F8FAFC;
+        }}
+        .obsidian-header-row {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.3rem;
+        }}
+        .obsidian-title {{
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.08rem;
+            font-weight: 700;
+            color: #F8FAFC !important;
+        }}
+        .obsidian-tag {{
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background-color: rgba(16, 185, 129, 0.18);
+            color: #34D399 !important;
+        }}
+        .obsidian-sub {{
+            font-size: 0.82rem;
+            color: #94A3B8 !important;
+            margin-bottom: 1.0rem;
+        }}
+        .obsidian-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-variant-numeric: tabular-nums;
+            font-size: 0.87rem;
+        }}
+        .obsidian-table th {{
+            text-align: left;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.73rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #94A3B8 !important;
+            padding: 0.5rem 0.45rem;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+        }}
+        .obsidian-table th.num, .obsidian-table td.num {{
+            text-align: right;
+        }}
+        .obsidian-table td {{
+            padding: 0.62rem 0.45rem;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.11);
+            color: #F1F5F9 !important;
+        }}
+        .meter-wrap {{
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.45rem;
+        }}
+        .meter-track {{
+            width: 54px;
+            height: 6px;
+            background-color: rgba(148, 163, 184, 0.2);
+            border-radius: 99px;
+            overflow: hidden;
+        }}
+        .meter-fill {{
+            height: 100%;
+            border-radius: 99px;
+        }}
+        .obs-pos {{
+            color: #34D399 !important;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+        }}
+        .obs-neg {{
+            color: #FB7185 !important;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+        }}
+        /* Bento Regime Grid */
+        .bento-card {{
+            background-color: {bg_card};
+            border: 1px solid {border_col};
+            border-radius: 10px;
+            padding: 1.45rem 1.5rem;
+            height: 100%;
+            position: relative;
+        }}
+        .bento-card.emerald-top {{
+            border-top: 4px solid {accent_bright};
+        }}
+        .bento-card.amber-top {{
+            border-top: 4px solid {warn};
+        }}
+        .bento-card.rose-top {{
+            border-top: 4px solid {neg};
+        }}
+        .bento-kicker {{
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.74rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.4rem;
+        }}
+        .bento-kicker.emerald {{ color: {accent} !important; }}
+        .bento-kicker.amber {{ color: {warn} !important; }}
+        .bento-kicker.rose {{ color: {neg} !important; }}
+        .bento-stat {{
+            font-size: 2.2rem;
+            font-weight: 700;
+            line-height: 1.05;
+            margin-bottom: 0.25rem;
+        }}
+        .bento-title {{
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: {text_main};
+            margin-bottom: 0.55rem;
+        }}
+        .bento-copy {{
+            font-size: 0.91rem;
+            line-height: 1.58;
+            color: {text_muted};
+            margin-bottom: 0.9rem;
+        }}
+        .bento-bars {{
+            background-color: {bg_subtle};
+            border-radius: 6px;
+            padding: 0.65rem 0.8rem;
+            font-size: 0.78rem;
+            font-family: 'JetBrains Mono', monospace;
         }}
         .clean-card {{
             background-color: {bg_card};
             border: 1px solid {border_col};
-            border-radius: 12px;
-            padding: 1.45rem 1.65rem;
-            margin-bottom: 1.2rem;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
-        }}
-        .archetype-card-green {{
-            background-color: {bg_card};
-            border: 1px solid {border_col};
-            border-top: 4px solid #10b981;
-            border-radius: 12px;
-            padding: 1.35rem 1.5rem;
-            height: 100%;
-        }}
-        .archetype-card-red {{
-            background-color: {bg_card};
-            border: 1px solid {border_col};
-            border-top: 4px solid #ef4444;
-            border-radius: 12px;
-            padding: 1.35rem 1.5rem;
-            height: 100%;
-        }}
-        .archetype-card-amber {{
-            background-color: {bg_card};
-            border: 1px solid {border_col};
-            border-top: 4px solid #f59e0b;
-            border-radius: 12px;
-            padding: 1.35rem 1.5rem;
-            height: 100%;
+            padding: 1.5rem 1.75rem;
+            margin-bottom: 1.25rem;
+            border-radius: 10px;
         }}
         .summary-banner {{
             background-color: {bg_card};
             border: 1px solid {border_col};
-            border-left: 5px solid {accent_border};
-            border-radius: 12px;
-            padding: 1.35rem 1.6rem;
-            margin-bottom: 1.15rem;
+            border-left: 5px solid {cobalt};
+            padding: 1.5rem 1.75rem;
+            margin-bottom: 1.35rem;
+            border-radius: 10px;
+        }}
+        .summary-title-row {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            margin-bottom: 0.45rem;
         }}
         .summary-title {{
-            font-size: 1.35rem;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.55rem;
             font-weight: 700;
             color: {text_main};
-            margin-bottom: 0.35rem;
         }}
         .summary-meta {{
-            font-size: 0.94rem;
+            font-size: 0.9rem;
             color: {text_muted};
-            margin-bottom: 0.75rem;
+            margin-bottom: 0.95rem;
+            font-variant-numeric: tabular-nums;
         }}
         .summary-verdict {{
-            font-size: 1.0rem;
-            line-height: 1.6;
+            font-size: 0.95rem;
+            line-height: 1.62;
             color: {text_main};
             background-color: {bg_subtle};
-            padding: 0.85rem 1.1rem;
+            padding: 1.0rem 1.2rem;
             border-radius: 8px;
+            border-left: 3px solid {accent};
         }}
         .quote-box {{
             background-color: {bg_subtle};
-            border-left: 3px solid {accent_border};
-            padding: 0.8rem 1rem;
+            padding: 0.9rem 1.1rem;
             border-radius: 6px;
-            margin-bottom: 0.65rem;
-            font-size: 0.93rem;
-            line-height: 1.55;
+            margin-bottom: 0.7rem;
+            font-size: 0.9rem;
+            line-height: 1.56;
             color: {text_main};
+            border-left: 3px solid {border_col};
         }}
         .tag-pill {{
             display: inline-block;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.82rem;
-            font-weight: 600;
+            font-size: 0.78rem;
+            font-weight: 500;
             padding: 4px 10px;
-            border-radius: 6px;
+            border-radius: 999px;
             margin-right: 6px;
             margin-bottom: 6px;
         }}
         .tag-pos {{
-            background: rgba(16, 185, 129, 0.15);
-            border: 1px solid rgba(16, 185, 129, 0.45);
-            color: #059669 !important;
+            background: {accent_soft};
+            color: {accent} !important;
         }}
         .tag-neg {{
-            background: rgba(239, 68, 68, 0.15);
-            border: 1px solid rgba(239, 68, 68, 0.45);
-            color: #dc2626 !important;
+            background: {neg_soft};
+            color: {neg} !important;
         }}
         .tag-info {{
-            background: rgba(37, 99, 235, 0.12);
-            border: 1px solid rgba(37, 99, 235, 0.4);
-            color: #2563eb !important;
+            background: {cobalt_soft};
+            color: {cobalt} !important;
         }}
         </style>
         """,
@@ -698,7 +1166,7 @@ def _inject_theme_css(theme_mode: str) -> None:
 
 def _render_pills(items: List[str], css_class: str) -> str:
     if not items:
-        return "<span style='font-size:0.9rem;opacity:0.65;'>None detected in sample</span>"
+        return "<span style='font-size:0.88rem;opacity:0.65;'>None detected in sample</span>"
     return "".join(
         f"<span class='tag-pill {css_class}'>{html.escape(str(x))}</span>"
         for x in items
@@ -706,144 +1174,272 @@ def _render_pills(items: List[str], css_class: str) -> str:
 
 
 def render_cover_view(store: AuditStorage, theme_mode: str) -> None:
-    """Render Screen 0: Vibrant, high-impact Fintech & Quantitative Research Cover View."""
-    top_l, top_r = st.columns([0.75, 0.25])
-    with top_l:
-        st.caption("CAPEX-TO-CODE // GLOBAL AI & R&D VALUATION ENGINE")
-    with top_r:
+    """Render Screen 0: High-Contrast Fintech Command Center & Asymmetric Bento Grid."""
+    llm_cfg = _get_active_llm_config()
+
+    # Top Architectural Bar (Prominent Typographic Brand & Action Center)
+    nav_brand, nav_byok, nav_term, nav_theme = st.columns([0.52, 0.19, 0.17, 0.12], gap="small")
+    with nav_brand:
+        engine_short = f"● {llm_cfg['provider']}"
+        st.markdown(
+            f"""
+            <div class="top-brand-box">
+                <div class="brand-text-col">
+                    <div class="brand-title-line">
+                        <span class="brand-main-title">CapEx<span class="brand-to">-to-</span>Code</span>
+                        <span class="brand-pill-badge">v2.0 QUANT</span>
+                        <span class="byok-status-pill">{html.escape(engine_short)}</span>
+                    </div>
+                    <div class="brand-subtitle">Empirical R&amp;D Capitalization &amp; Multi-LLM Due Diligence</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with nav_byok:
+        st.write("")
+        with st.popover("BYOK API Keys", width="stretch"):
+            st.markdown("#### Multi-Provider LLM & Search Gateway")
+            st.caption(
+                "Plug in your own API key (OpenAI, DeepSeek, Perplexity Sonar Live Web Search, Gemini, Claude, or OpenRouter) to run live company intelligence searches and technical audits."
+            )
+            _render_byok_config_controls(location_prefix="cover_pop")
+    with nav_term:
+        st.write("")
+        if st.button("Terminal View →", type="primary", width="stretch"):
+            st.session_state["view_mode"] = "terminal"
+            st.rerun()
+    with nav_theme:
+        st.write("")
         theme_btn = st.button(
-            "🌙 Switch to Dark Mode" if theme_mode == "light" else "☀️ Switch to Light Mode",
-            use_container_width=True,
+            "Dark Mode" if theme_mode == "light" else "Light Mode",
+            width="stretch",
         )
         if theme_btn:
             st.session_state["theme_mode"] = "dark" if theme_mode == "light" else "light"
             st.rerun()
 
+    st.write("")
+
+    all_records = store.get_all_companies()
+    cover_df = recompute_universe_dataframe(all_records, weights=DEFAULT_MODEL_WEIGHTS)
+
+    # Live hero callouts computed from the benchmark universe (no hardcoded figures)
+    top_conv_row = cover_df.sort_values("Conversion_Pct", ascending=False).iloc[0]
+    worst_spread_row = cover_df.sort_values("Valuation_Spread_Pct", ascending=True).iloc[0]
+    hero_conv_val = f"{float(top_conv_row['Conversion_Pct']):.1f}%"
+    hero_conv_lbl = f"Peak R&amp;D Asset Conversion ({html.escape(str(top_conv_row['Ticker']))})"
+    hero_spread_val = f"{float(worst_spread_row['Valuation_Spread_Pct']):+.1f}%"
+    hero_spread_lbl = f"Deepest Fair P/E Compression ({html.escape(str(worst_spread_row['Ticker']))})"
+    n_engines = len(LLM_PROVIDER_PRESETS)
+
+    hero_l, hero_r = st.columns([0.48, 0.52], gap="large")
+    with hero_l:
+        st.markdown(
+            f"""
+            <div class="kicker-pill">DAMODARAN R&amp;D CAPITALIZATION × MULTI-LLM TELEMETRY</div>
+            <h1 class="display-h1">
+                Capitalize <span class="hl-emerald">real code.</span><br>
+                Write off <span class="hl-rose">AI narrative.</span>
+            </h1>
+            <p class="hero-lead">
+                GAAP accounting treats <b>$1 billion</b> invested in CUDA kernels, open-weight foundation models,
+                and RISC-V silicon identically to <b>$1 billion</b> burned on API wrappers and vendor coordination.
+                Cross-examine SEC filings against live Hugging Face, OpenAlex, and GitHub telemetry—or connect
+                your own <span class="hl-cobalt">OpenAI, Perplexity, DeepSeek, Gemini, or Claude API key</span>
+                for live due diligence search.
+            </p>
+            <div class="hero-stat-grid">
+                <div class="hero-stat-card emerald">
+                    <div class="hero-stat-num emerald">{hero_conv_val}</div>
+                    <div class="hero-stat-label">{hero_conv_lbl}</div>
+                </div>
+                <div class="hero-stat-card">
+                    <div class="hero-stat-num cobalt">{n_engines} Engines</div>
+                    <div class="hero-stat-label">BYOK LLM &amp; Live Web Search Gateway</div>
+                </div>
+                <div class="hero-stat-card rose">
+                    <div class="hero-stat-num rose">{hero_spread_val}</div>
+                    <div class="hero-stat-label">{hero_spread_lbl}</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        search_col, btn_col = st.columns([0.66, 0.34], gap="small")
+        with search_col:
+            cover_search = st.text_input(
+                "Audit any global public company",
+                value="",
+                placeholder="Enter Ticker or Company (e.g. NVDA, META, ASML, PLTR, SAP.DE)",
+                label_visibility="collapsed",
+            )
+        with btn_col:
+            if st.button("Run Live Audit →", type="primary", width="stretch"):
+                if cover_search.strip():
+                    st.session_state["pending_search_query"] = cover_search.strip()
+                st.session_state["view_mode"] = "terminal"
+                st.rerun()
+
+    with hero_r:
+        featured_tickers = ["NVDA", "META", "IFX.DE", "MSFT", "PLTR", "VOW3.DE"]
+        sub_df = cover_df[cover_df["Ticker"].isin(featured_tickers)].copy()
+        sub_df["sort_order"] = sub_df["Ticker"].apply(
+            lambda x: featured_tickers.index(x) if x in featured_tickers else 99
+        )
+        sub_df = sub_df.sort_values("sort_order")
+
+        rows_html = []
+        for _, r in sub_df.iterrows():
+            sym = r["CurrSym"]
+            conv = float(r["Conversion_Pct"])
+            awdi = float(r["AWDI"])
+            spread = float(r["Valuation_Spread_Pct"])
+            spread_cls = "obs-pos" if spread >= 0 else "obs-neg"
+            bar_color = "#10B981" if conv >= 70 else ("#3B82F6" if conv >= 50 else "#F43F5E")
+            awdi_badge_bg = "rgba(16,185,129,0.18)" if awdi < 20 else "rgba(244,63,94,0.22)"
+            awdi_badge_col = "#34D399" if awdi < 20 else "#FB7185"
+
+            rows_html.append(
+                f"<tr>"
+                f"<td><b style='font-family:JetBrains Mono,monospace;color:#FFFFFF;'>{html.escape(str(r['Ticker']))}</b> "
+                f"<span style='color:#94A3B8;font-size:0.8rem;'>· {html.escape(str(r['Name'])[:15])}</span></td>"
+                f"<td class='num' style='font-family:JetBrains Mono,monospace;'>{sym}{float(r['RD_Current_B']):.1f}B</td>"
+                f"<td class='num'>"
+                f"<div class='meter-wrap'>"
+                f"<span style='font-family:JetBrains Mono,monospace;font-size:0.82rem;'>{conv:.0f}%</span>"
+                f"<div class='meter-track'><div class='meter-fill' style='width:{min(100.0, conv):.0f}%;background:{bar_color};'></div></div>"
+                f"</div>"
+                f"</td>"
+                f"<td class='num'><span style='font-family:JetBrains Mono,monospace;font-size:0.76rem;padding:2px 7px;border-radius:4px;background:{awdi_badge_bg};color:{awdi_badge_col};'>{awdi:.0f}</span></td>"
+                f"<td class='num' style='font-family:JetBrains Mono,monospace;'>{float(r['ROIC_Adjusted_Pct']):.1f}%</td>"
+                f"<td class='num {spread_cls}'>{spread:+.1f}%</td>"
+                f"</tr>"
+            )
+
+        st.markdown(
+            f"""
+            <div class="obsidian-ledger">
+                <div class="obsidian-header-row">
+                    <div class="obsidian-title">Empirical R&amp;D Capitalization Telemetry</div>
+                    <span class="obsidian-tag">LIVE 14-EQUITY BENCHMARK</span>
+                </div>
+                <div class="obsidian-sub">Damodaran multi-year R&amp;D amortization · Conversion η = Productive Asset / Reported R&amp;D</div>
+                <table class="obsidian-table">
+                    <thead>
+                        <tr>
+                            <th>Security</th>
+                            <th class="num">R&amp;D Spend</th>
+                            <th class="num">Productive η</th>
+                            <th class="num">AWDI</th>
+                            <th class="num">Adj. ROIC</th>
+                            <th class="num">Fair P/E Spread</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {"".join(rows_html)}
+                    </tbody>
+                </table>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        q_cols = st.columns(6, gap="small")
+        for col, tk in zip(q_cols, featured_tickers):
+            with col:
+                if st.button(tk, key=f"cover_quick_{tk}", width="stretch"):
+                    st.session_state["selected_ticker"] = tk
+                    st.session_state["view_mode"] = "terminal"
+                    st.rerun()
+
+    st.write("")
     st.markdown(
         """
-        <div class="hero-banner">
-            <div class="hero-badge">GLOBAL AI REALITY &amp; R&amp;D VALUATION RADAR • US / UK / EU</div>
-            <h1 class="hero-headline" style="font-size:2.45rem;font-weight:800;line-height:1.2;margin-bottom:0.9rem;">
-                Separating <span class="gradient-accent">Frontier AI Moats</span> from
-                Corporate <span style="color:#ef4444 !important;">AI-Washing &amp; R&amp;D Bloat</span>
-            </h1>
-            <p style="font-size:1.08rem;line-height:1.7;opacity:0.9;max-width:960px;margin-bottom:1.3rem;">
-                Every year, public companies spend over <b>$500 Billion</b> on R&amp;D—yet standard accounting treats
-                $1 spent on <b>CUDA kernels, Llama foundation models, and RISC-V silicon</b> identically to $1 wasted on
-                <b>OpenAI API wrappers, external vendor bureaucracy, and slideware</b>. CapEx-to-Code cross-examines
-                regulatory filings against live Hugging Face, OpenAlex, GitHub, and engineer forum telemetry to re-value
-                global equities using Aswath Damodaran’s R&amp;D Capitalization framework.
-            </p>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin:1.2rem 0 0.85rem 0;">
+            <h2 class="display-h2" style="font-size:1.65rem;margin:0;">
+                Three Regimes of Corporate R&amp;D Capitalization
+            </h2>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;opacity:0.75;">
+                CROSS-EXAMINING 10-K CLAIMS × HUGGING FACE / GITHUB × ENGINEER FORUMS
+            </span>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown("#### Three Market Archetypes Exposed by Our Empirical Model")
-    c1, c2, c3 = st.columns(3, gap="medium")
-    with c1:
+    b_col1, b_col2, b_col3 = st.columns(3, gap="medium")
+    with b_col1:
         st.markdown(
             """
-            <div class="archetype-card-green">
-                <div style="font-family:monospace;font-size:0.8rem;font-weight:700;color:#10b981 !important;margin-bottom:0.3rem;">
-                    ARCHETYPE 01 // VERIFIED AI COMPOUNDERS
-                </div>
-                <div style="font-size:1.15rem;font-weight:700;margin-bottom:0.4rem;">NVIDIA • Meta • Infineon</div>
-                <div style="font-size:0.93rem;line-height:1.58;opacity:0.86;">
-                    <b>High Proof (71–92) • Zero AI-Washing (AWDI = 0)</b><br>
-                    Massive open-weight models (Llama), PyTorch/CUDA dominance, or RISC-V safety silicon. Over 78% of R&amp;D
-                    converts into multi-year capital assets, unlocking substantial Adjusted ROIC and Fair P/E upside.
+            <div class="bento-card emerald-top">
+                <div class="bento-kicker emerald">REGIME I · VERIFIED COMPOUNDERS</div>
+                <div class="bento-stat" style="color:#10B981 !important;">&gt; 78%</div>
+                <div class="bento-title">Productive R&amp;D Asset Conversion</div>
+                <p class="bento-copy">
+                    <b>NVIDIA, Meta, and Infineon</b> convert the overwhelming majority of R&amp;D into open-weight foundation
+                    models (Llama), CUDA/Triton kernels, and automotive RISC-V silicon. GAAP 100% immediate expensing
+                    understates their true economic ROIC, unlocking positive Fair P/E valuation upside.
+                </p>
+                <div class="bento-bars">
+                    Technical Proof: <b>71–92 / 100</b> &nbsp;·&nbsp; AWDI Hype Gap: <b>0.0</b>
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-    with c2:
+    with b_col2:
         st.markdown(
             """
-            <div class="archetype-card-red">
-                <div style="font-family:monospace;font-size:0.8rem;font-weight:700;color:#ef4444 !important;margin-bottom:0.3rem;">
-                    ARCHETYPE 02 // NARRATIVE OVERDRIVE &amp; WRAPPERS
-                </div>
-                <div style="font-size:1.15rem;font-weight:700;margin-bottom:0.4rem;">Palantir • IBM Consulting</div>
-                <div style="font-size:0.93rem;line-height:1.58;opacity:0.86;">
-                    <b>Extreme Filing Hype (82–96) • High AWDI Alert (44–88)</b><br>
-                    Aggressive "AI-First / Autonomous Agent" filing rhetoric paired with sparse foundation-model output
-                    or heavy integration consulting overhead. Triggers valuation multiple compression in our model.
+            <div class="bento-card amber-top">
+                <div class="bento-kicker amber">REGIME II · NARRATIVE OVERDRIVE</div>
+                <div class="bento-stat" style="color:#F59E0B !important;">44–88</div>
+                <div class="bento-title">AI-Washing Divergence Index (AWDI)</div>
+                <p class="bento-copy">
+                    <b>Palantir and IBM Consulting</b> exhibit intense executive filing claims (<i>Autonomous Agents</i>,
+                    <i>AI-First Platform</i>) that outpace verifiable open-weight models or peer-reviewed systems artifacts,
+                    triggering an institutional multiple compression discount in our valuation bridge.
+                </p>
+                <div class="bento-bars">
+                    Filing Claim: <b>82–96 / 100</b> &nbsp;·&nbsp; <b>Multiple Compression Risk</b>
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-    with c3:
+    with b_col3:
         st.markdown(
             """
-            <div class="archetype-card-amber">
-                <div style="font-family:monospace;font-size:0.8rem;font-weight:700;color:#f59e0b !important;margin-bottom:0.3rem;">
-                    ARCHETYPE 03 // LEGACY R&amp;D DILUTION TRAP
-                </div>
-                <div style="font-size:1.15rem;font-weight:700;margin-bottom:0.4rem;">Volkswagen Group (€15.8B R&amp;D)</div>
-                <div style="font-size:0.93rem;line-height:1.58;opacity:0.86;">
-                    <b>Low Technical Proof (21.5) • Severe Friction (76+)</b><br>
-                    Spends more on R&amp;D than Infineon and SAP combined, yet engineer telemetry reveals 80% vendor
-                    coordination (<i>Dienstleistersteuerung</i>) and SAFe bloat—destroying R&amp;D capital formation.
+            <div class="bento-card rose-top">
+                <div class="bento-kicker rose">REGIME III · BUREAUCRATIC DILUTION</div>
+                <div class="bento-stat" style="color:#F43F5E !important;">€15.8B</div>
+                <div class="bento-title">Headline R&amp;D with &lt;35% Conversion</div>
+                <p class="bento-copy">
+                    <b>Volkswagen Group (VOW3.DE)</b> outspends Infineon and SAP combined in nominal R&amp;D, yet
+                    developer telemetry reveals heavy multi-tier supplier coordination (<i>Dienstleistersteuerung</i>)
+                    and SAFe governance overhead, requiring large deadweight write-offs before capitalization.
+                </p>
+                <div class="bento-bars">
+                    Technical Proof: <b>21.5 / 100</b> &nbsp;·&nbsp; Friction Penalty: <b>76+ / 100</b>
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-
-    st.write("")
-    st.markdown("#### Quick-Jump into a Live Company Audit or Enter the Full Terminal")
-    q1, q2, q3, q4, q5, q6 = st.columns(6, gap="small")
-    quick_picks = [
-        (q1, "META", "🔥 Meta (US)"),
-        (q2, "NVDA", "⚡ NVIDIA (US)"),
-        (q3, "PLTR", "🚨 Palantir (US)"),
-        (q4, "ARM", "🇬🇧 Arm (UK)"),
-        (q5, "IFX.DE", "💎 Infineon (DE)"),
-        (q6, "VOW3.DE", "⚠️ VW Group (DE)"),
-    ]
-    for col, tk, label in quick_picks:
-        with col:
-            if st.button(label, use_container_width=True):
-                st.session_state["selected_ticker"] = tk
-                st.session_state["view_mode"] = "terminal"
-                st.rerun()
-
-    st.write("")
-    enter_l, enter_r = st.columns([0.65, 0.35], gap="medium")
-    with enter_l:
-        cover_search = st.text_input(
-            "Or Type ANY Global Stock Ticker / Company Name to Audit Immediately:",
-            value="",
-            placeholder="e.g. AAPL, GOOGL, AMZN, AMD, ASML, BA.L, SAP.DE",
-        )
-    with enter_r:
-        st.write("")
-        if st.button("Launch Research Terminal →", type="primary", use_container_width=True):
-            if cover_search.strip():
-                st.session_state["pending_search_query"] = cover_search.strip()
-            st.session_state["view_mode"] = "terminal"
-            st.rerun()
 
 
 def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
-    """Render Screen 1: Clean, Spacious Progressive-Disclosure Research Terminal."""
-    env_key = load_deepseek_api_key()
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # SIDEBAR: THEME, MODEL SENSITIVITY & DEEPSEEK MODE
-    # ──────────────────────────────────────────────────────────────────────────
+    """Render Screen 1: Institutional Quantitative Research Terminal & BYOK Live Intelligence Search."""
     with st.sidebar:
-        if st.button("← Back to Cover Page", use_container_width=True):
+        if st.button("← Back to Overview", width="stretch"):
             st.session_state["view_mode"] = "cover"
             st.rerun()
 
-        st.markdown("### Display Theme")
+        st.markdown("### Appearance")
         sidebar_theme = st.radio(
             "Color Mode",
-            options=["☀️ Light Mode", "🌙 Dark Mode"],
+            options=["Light Mode", "Dark Mode"],
             index=0 if theme_mode == "light" else 1,
             horizontal=True,
             label_visibility="collapsed",
@@ -852,8 +1448,13 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
             st.session_state["theme_mode"] = "light" if "Light" in sidebar_theme else "dark"
             st.rerun()
 
-        st.divider()
-        st.markdown("### Model Calibration")
+        st.write("")
+        st.markdown("### BYOK LLM & Search Gateway")
+        st.caption("Connect your own API key to power live company search & technical due diligence.")
+        llm_cfg = _render_byok_config_controls(location_prefix="sidebar")
+
+        st.write("")
+        st.markdown("### Quantitative Calibration")
         ai_w = st.slider(
             "Contemporary AI Weight (S_AI)",
             min_value=0.40,
@@ -885,14 +1486,6 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
         elif "Force 5" in amort_override_opt:
             amort_override = 5
 
-        st.divider()
-        st.markdown("### DeepSeek Technical Mode")
-        use_deepseek = st.toggle(
-            "Enable DeepSeek Live Audit",
-            value=bool(env_key),
-        )
-        st.caption(f"API Key: **{'Active (.env)' if env_key else 'Not Configured'}**")
-
     active_weights = {
         "ai_stack_weight": ai_w,
         "systems_stack_weight": sys_w,
@@ -901,16 +1494,34 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
         "awdi_penalty_weight": awdi_w,
     }
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # UNIFIED COMPANY SEARCH & SELECTION BAR
-    # ──────────────────────────────────────────────────────────────────────────
-    head_l, head_r = st.columns([0.78, 0.22])
-    with head_l:
-        st.markdown("## CapEx-to-Code Research Terminal")
+    head_brand, head_m, head_r = st.columns([0.62, 0.22, 0.16], gap="small")
+    with head_brand:
+        engine_short = f"● {llm_cfg['provider']}"
+        st.markdown(
+            f"""
+            <div class="top-brand-box">
+                <div class="brand-text-col">
+                    <div class="brand-title-line">
+                        <span class="brand-main-title">CapEx<span class="brand-to">-to-</span>Code</span>
+                        <span class="brand-pill-badge">RESEARCH TERMINAL</span>
+                        <span class="byok-status-pill">{html.escape(engine_short)}</span>
+                    </div>
+                    <div class="brand-subtitle">Damodaran Quality R&amp;D Capitalization &amp; Cross-Examination Matrix</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with head_m:
+        st.write("")
+        with st.popover("BYOK API Keys", width="stretch"):
+            st.markdown("#### Multi-Provider LLM Gateway")
+            _render_byok_config_controls(location_prefix="term_top")
     with head_r:
+        st.write("")
         top_theme_btn = st.button(
-            "🌙 Switch to Dark Mode" if theme_mode == "light" else "☀️ Switch to Light Mode",
-            use_container_width=True,
+            "Dark Mode" if theme_mode == "light" else "Light Mode",
+            width="stretch",
         )
         if top_theme_btn:
             st.session_state["theme_mode"] = "dark" if theme_mode == "light" else "light"
@@ -919,16 +1530,16 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
     s_col1, s_col2, s_col3 = st.columns([0.52, 0.20, 0.28], gap="small")
     with s_col1:
         query_input = st.text_input(
-            "Search or Analyze ANY Company (Type Ticker or Name, e.g., META, AAPL, AMZN, ASML, BA.L, SAP.DE):",
+            "Audit or switch security (Ticker or company name):",
             value=st.session_state.pop("pending_search_query", ""),
-            placeholder="Type any ticker or name (e.g. META, AMZN, AMD, ASML, ORCL) and click Analyze →",
+            placeholder="e.g. META, AAPL, AMZN, AMD, ASML, BA.L, SAP.DE",
         )
     with s_col2:
         st.write("")
-        analyze_clicked = st.button("Analyze / Switch Company", type="primary", use_container_width=True)
+        analyze_clicked = st.button("Audit Security", type="primary", width="stretch")
     with s_col3:
         region_filter = st.selectbox(
-            "Filter Saved Universe by Region:",
+            "Universe Region:",
             options=["All Markets (Global)", "United States (US)", "United Kingdom (UK)", "Europe / Germany (EU)"],
             index=0,
         )
@@ -958,10 +1569,13 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
 
             new_rec = run_full_company_audit(
                 ticker=resolved_ticker,
-                use_deepseek=use_deepseek,
-                api_key=env_key,
+                use_deepseek=llm_cfg["enabled"] and llm_cfg["has_key"],
+                api_key=llm_cfg["api_key"],
                 weights=active_weights,
                 progress_callback=_prog_cb,
+                provider=llm_cfg["provider"],
+                model=llm_cfg["model"],
+                base_url=llm_cfg["base_url"],
             )
             store.upsert_company(new_rec)
             prog.progress(100, text=f"Loaded {new_rec['name']} ({new_rec['ticker']}) into database.")
@@ -996,9 +1610,9 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
             current_sel = ticker_list[0]
 
     selected_option = st.selectbox(
-        "Currently Analyzed Companies (Click to switch, or use the search box above to add any new stock):",
+        "Active Security in Universe:",
         options=[
-            f"{r['Ticker']} — {r['Name']} ({r['Region']} • {r['Regime']})"
+            f"{r['Ticker']} — {r['Name']} ({r['Region']} · {r['Regime']})"
             for _, r in df.iterrows()
         ],
         index=ticker_list.index(current_sel),
@@ -1007,22 +1621,21 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
     st.session_state["selected_ticker"] = active_ticker
     focus_row = df[df["Ticker"] == active_ticker].iloc[0].to_dict()
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # LAYER 1: SPACIOUS EXECUTIVE SUMMARY & 4 CORE KPI CARDS + INFO POPOVERS
-    # ──────────────────────────────────────────────────────────────────────────
     st.markdown(
         f"""
         <div class="summary-banner">
-            <div class="summary-title">{html.escape(focus_row['Name'])} ({html.escape(focus_row['Ticker'])}) — {html.escape(focus_row['Regime'])}</div>
+            <div class="summary-title-row">
+                <div class="summary-title">{html.escape(focus_row['Name'])} ({html.escape(focus_row['Ticker'])})</div>
+                <span class="byok-live-pill">{html.escape(focus_row['Regime'])} · {html.escape(focus_row['Audit_Mode'])}</span>
+            </div>
             <div class="summary-meta">
-                <b>Region:</b> {html.escape(focus_row['Country'])} ({html.escape(focus_row['Region'])}) &nbsp;|&nbsp;
-                <b>Sector:</b> {html.escape(focus_row['Sector'])} &nbsp;|&nbsp;
-                <b>Market Cap:</b> {_fmt_curr(focus_row['Mkt_Cap_B'], focus_row['Currency'])} &nbsp;|&nbsp;
-                <b>R&amp;D Amortization Life:</b> {focus_row['Amortization_Years']} Years &nbsp;|&nbsp;
-                <b>Audit Mode:</b> {html.escape(focus_row['Audit_Mode'])}
+                Region: <b>{html.escape(focus_row['Country'])} ({html.escape(focus_row['Region'])})</b> &nbsp;·&nbsp;
+                Sector: <b>{html.escape(focus_row['Sector'])}</b> &nbsp;·&nbsp;
+                Market Cap: <b>{_fmt_curr(focus_row['Mkt_Cap_B'], focus_row['Currency'])}</b> &nbsp;·&nbsp;
+                R&amp;D Amortization Life: <b>{focus_row['Amortization_Years']} Years</b>
             </div>
             <div class="summary-verdict">
-                <b>Executive Takeaway:</b> {html.escape(focus_row['Primary_Contradiction'])}
+                <b>Primary Finding:</b> {html.escape(focus_row['Primary_Contradiction'])}
                 <br><b>Valuation Verdict:</b> {html.escape(focus_row['Executive_Verdict'])}
             </div>
         </div>
@@ -1039,17 +1652,13 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
             delta_color="normal" if focus_row["Conversion_Pct"] >= 60.0 else "inverse",
             help="Percentage of annual R&D that forms durable AI & systems assets instead of bureaucracy waste.",
         )
-        with st.popover("ⓘ How is Productive R&D (η) defined?", use_container_width=True):
+        with st.popover("Methodology: Productive R&D (η)", width="stretch"):
             st.markdown(
                 """
-                **Plain-English Definition**: The percentage of every 100 USD / EUR in reported R&D expenditure that converts into durable AI & computer-systems capital assets—rather than being diluted by external vendor coordination or narrative wrapper projects.
+                **Definition**: The percentage of every 100 USD / EUR in reported R&D expenditure that converts into durable AI & computer-systems capital assets—rather than being diluted by external vendor coordination or narrative wrapper projects.
                 
-                **Mathematical Formula**:
+                **Formula**:
                 $$\\eta_{\\text{conv}} = \\text{clip}\\left(\\frac{0.65 \\cdot S_{\\text{proof}} + 0.35 \\cdot (100 - S_{\\text{friction}}) - 0.25 \\cdot \\text{AWDI}}{100},\\; 15\\%,\\; 95\\%\\right)$$
-                
-                **How to Interpret**:
-                - **> 65% (Strong Capital Formation)**: High engineering output paired with low internal bureaucracy (`NVDA`, `META`, `IFX.DE`).
-                - **< 45% (Severe Dilution Alert)**: Substantial R&D budget absorbed by external vendor coordination (`Dienstleistersteuerung`) or legacy maintenance (`VOW3.DE`).
                 """
             )
 
@@ -1061,17 +1670,13 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
             delta_color="inverse" if focus_row["AWDI"] >= 35.0 else "normal",
             help="Measures the gap between management's AI hype in filings and verifiable technical proof.",
         )
-        with st.popover("ⓘ How is AI-Washing (AWDI) defined?", use_container_width=True):
+        with st.popover("Methodology: AI-Washing (AWDI)", width="stretch"):
             st.markdown(
                 """
-                **Plain-English Definition**: Quantifies the divergence between executive AI narrative hype in regulatory filings ($S_{\\text{claim}}$) and verifiable open-weight models, research citations, and production systems code ($S_{\\text{proof}}$), amplified by internal engineering friction ($S_{\\text{friction}}$). Lower is better (`0` = zero hype gap).
+                **Definition**: Quantifies the divergence between executive AI narrative hype in regulatory filings ($S_{\\text{claim}}$) and verifiable open-weight models, research citations, and production systems code ($S_{\\text{proof}}$), amplified by internal engineering friction ($S_{\\text{friction}}$).
                 
-                **Mathematical Formula**:
+                **Formula**:
                 $$\\text{AWDI} = \\max(0,\\; S_{\\text{claim}} - S_{\\text{proof}}) \\times \\left(1 + \\frac{S_{\\text{friction}}}{100}\\right)$$
-                
-                **How to Interpret**:
-                - **0 – 20 (Grounded Execution)**: Verifiable engineering output matches or exceeds executive narrative claims.
-                - **> 35 (AI-Washing Risk Alert)**: Aggressive filing rhetoric unsupported by primary model/systems artifacts and accompanied by elevated developer friction.
                 """
             )
 
@@ -1083,17 +1688,14 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
             delta_color="normal",
             help="After-tax Return on Invested Capital after capitalizing productive R&D assets.",
         )
-        with st.popover("ⓘ How is Adjusted ROIC calculated?", use_container_width=True):
+        with st.popover("Methodology: Adjusted ROIC", width="stretch"):
             st.markdown(
                 """
-                **Plain-English Definition**: Re-estimates Return on Invested Capital (ROIC) by treating **Productive R&D** as a multi-year intangible capital asset amortized over $L$ years (3–6 years by sector) following Professor Aswath Damodaran's capitalization framework.
+                **Definition**: Re-estimates Return on Invested Capital (ROIC) by treating **Productive R&D** as a multi-year intangible capital asset amortized over $L$ years (3–6 years by sector) following Professor Aswath Damodaran's capitalization framework.
                 
-                **Mathematical Formula**:
+                **Formula**:
                 $$\\text{EBIT}_{\\text{adj}} = \\text{EBIT}_{\\text{rep}} + RD_t \\cdot \\eta_{\\text{conv}} - A_{\\text{RD}}$$
                 $$\\text{ROIC}_{\\text{adj}} = \\frac{\\text{EBIT}_{\\text{adj}} \\cdot (1 - \\tau)}{\\text{IC}_{\\text{rep}} + RC_{\\text{asset}}}$$
-                
-                **How to Interpret**:
-                - **Positive Delta vs. GAAP ROIC**: Indicates that immediate 100% R&D expensing under GAAP/IFRS understates the company's true economic profitability.
                 """
             )
 
@@ -1105,114 +1707,105 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
             delta_color="normal" if focus_row["Valuation_Spread_Pct"] >= 0 else "inverse",
             help="Model-implied fair Forward P/E multiple compared to current market Forward P/E.",
         )
-        with st.popover("ⓘ How is Implied Fair P/E calculated?", use_container_width=True):
+        with st.popover("Methodology: Implied Fair P/E", width="stretch"):
             st.markdown(
                 """
-                **Plain-English Definition**: Compares the model-implied fair Forward P/E multiple—adjusted for capitalized R&D earnings accretion, Adjusted ROIC quality, and AI-washing multiple compression—against the current market Forward P/E.
+                **Definition**: Compares the model-implied fair Forward P/E multiple—adjusted for capitalized R&D earnings accretion, Adjusted ROIC quality, and AI-washing multiple compression—against the current market Forward P/E.
                 
-                **Mathematical Formula**:
+                **Formula**:
                 $$\\text{Valuation Spread (\\%)} = \\frac{\\text{Implied Fair P/E} - \\text{Market P/E}}{\\text{Market P/E}} \\times 100\\%$$
-                
-                **How to Interpret**:
-                - **Spread > +10% (Undervalued Moat)**: Strong engineering capital formation not yet fully priced into consensus earnings multiples.
-                - **Spread < 0% (Overvalued / Multiple Compression Risk)**: Market multiple reflects narrative premium or unadjusted R&D dilution.
                 """
             )
 
     st.write("")
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # SINGLE SPACIOUS FULL-WIDTH CHART WITH SEGMENTED SWITCHER
-    # ──────────────────────────────────────────────────────────────────────────
-    chart_hdr_l, chart_hdr_r = st.columns([0.74, 0.26])
+    chart_hdr_l, chart_hdr_r = st.columns([0.76, 0.24])
     with chart_hdr_l:
         chart_mode = st.radio(
-            "Select Primary Visual Chart:",
+            "Primary Visualization:",
             options=[
-                "1. Global Peer Matrix (Proof vs. Valuation Spread)",
-                "2. Company R&D Capitalization Breakdown (Damodaran Schedule)",
-                "3. Three-Way AI Score Decomposition (Claim vs. Proof vs. Friction)",
+                "Peer Valuation Matrix (Proof vs. Spread)",
+                "Damodaran R&D Capitalization Schedule",
+                "Three-Way Evidence Decomposition",
             ],
             horizontal=True,
         )
     with chart_hdr_r:
         st.write("")
-        with st.popover("ⓘ How to Read This Chart", use_container_width=True):
+        with st.popover("Chart Reading Guide", width="stretch"):
             st.markdown(
                 """
-                **1. Global Peer Matrix (Proof vs. Valuation Spread)**:
-                - **X-Axis (`Technical Proof Score`, 0–100)**: Measures verified AI & computer systems output across Hugging Face, OpenAlex, and GitHub.
-                - **Y-Axis (`Implied Valuation Spread %`)**: Measures upside/downside between our Damodaran R&D-adjusted Fair P/E and current Market P/E.
-                - **Top-Right Quadrant (`Verified AI Compounder Zone`)**: High verifiable engineering output paired with positive valuation upside.
-                - *Note: Nearby bubbles apply a gentle 2D anti-collision layout offset for label legibility; hover over any bubble to inspect exact unadjusted figures.*
+                **Peer Valuation Matrix (Proof vs. Spread)**:
+                - **Horizontal Axis (`Technical Proof Score`, 0–100)**: Measures verified AI & computer systems output across Hugging Face, OpenAlex, and GitHub.
+                - **Vertical Axis (`Implied Valuation Spread %`)**: Measures upside/downside between our Damodaran R&D-adjusted Fair P/E and current Market P/E.
+                - **Upper-Right Quadrant (`Verified Compounders`)**: High verifiable engineering output paired with positive valuation upside.
                 """
             )
 
-    if chart_mode.startswith("1."):
+    if chart_mode.startswith("Peer"):
         st.plotly_chart(
             build_global_matrix_chart(df, theme_mode=theme_mode, highlight_ticker=focus_row["Ticker"]),
-            use_container_width=True,
+            width="stretch",
         )
-    elif chart_mode.startswith("2."):
+    elif chart_mode.startswith("Damodaran"):
         st.plotly_chart(
             build_rd_capitalization_bridge(focus_row, theme_mode=theme_mode),
-            use_container_width=True,
+            width="stretch",
         )
     else:
         st.plotly_chart(
             build_three_way_radar_bar(focus_row, theme_mode=theme_mode),
-            use_container_width=True,
+            width="stretch",
         )
 
-    st.divider()
+    st.write("")
+    st.markdown("#### Deep-Dive Modules & BYOK Live LLM Intelligence Search")
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # LAYER 2: CLICK-TO-EXPAND PROGRESSIVE DISCLOSURE BUTTONS
-    # ──────────────────────────────────────────────────────────────────────────
-    st.markdown("#### Explore Detailed Evidence & Financial Schedules (Click to Expand)")
-    st.caption("Click any module below to expand or collapse detailed telemetry without cluttering the main view.")
-
-    for key in ("show_evidence", "show_accounting", "show_workbench"):
+    for key in ("show_llm_search", "show_evidence", "show_accounting", "show_workbench"):
         if key not in st.session_state:
-            st.session_state[key] = False
+            st.session_state[key] = (key == "show_llm_search")
 
-    b1, b2, b3 = st.columns(3, gap="medium")
+    b0, b1, b2, b3 = st.columns(4, gap="small")
+    with b0:
+        lbl0 = "Hide Live LLM Search" if st.session_state["show_llm_search"] else "BYOK Live LLM Search"
+        if st.button(lbl0, width="stretch", type="primary" if st.session_state["show_llm_search"] else "secondary"):
+            st.session_state["show_llm_search"] = not st.session_state["show_llm_search"]
+            st.rerun()
     with b1:
-        lbl1 = "▼ Hide Three-Way Evidence & DeepSeek Audit" if st.session_state["show_evidence"] else "▶ 1. View Three-Way Evidence & DeepSeek Audit"
-        if st.button(lbl1, use_container_width=True, type="primary" if st.session_state["show_evidence"] else "secondary"):
+        lbl1 = "Hide Three-Way Evidence" if st.session_state["show_evidence"] else "Three-Way Evidence & Audit"
+        if st.button(lbl1, width="stretch", type="primary" if st.session_state["show_evidence"] else "secondary"):
             st.session_state["show_evidence"] = not st.session_state["show_evidence"]
             st.rerun()
     with b2:
-        lbl2 = "▼ Hide R&D Balance Sheet & Global Peer Table" if st.session_state["show_accounting"] else "▶ 2. View R&D Accounting & Global Peer Table"
-        if st.button(lbl2, use_container_width=True, type="primary" if st.session_state["show_accounting"] else "secondary"):
+        lbl2 = "Hide R&D Balance Sheet" if st.session_state["show_accounting"] else "R&D Schedule & Peer Ledger"
+        if st.button(lbl2, width="stretch", type="primary" if st.session_state["show_accounting"] else "secondary"):
             st.session_state["show_accounting"] = not st.session_state["show_accounting"]
             st.rerun()
     with b3:
-        lbl3 = "▼ Hide Author Thesis & Parameter Calibration" if st.session_state["show_workbench"] else "▶ 3. View Author Thesis & Parameter Calibration"
-        if st.button(lbl3, use_container_width=True, type="primary" if st.session_state["show_workbench"] else "secondary"):
+        lbl3 = "Hide Analyst Workbench" if st.session_state["show_workbench"] else "Analyst Thesis & Parameters"
+        if st.button(lbl3, width="stretch", type="primary" if st.session_state["show_workbench"] else "secondary"):
             st.session_state["show_workbench"] = not st.session_state["show_workbench"]
             st.rerun()
 
-    # --------------------------------------------------------------------------
-    # EXPANDABLE PANEL 1: THREE-WAY EVIDENCE & DEEPSEEK TECHNICAL AUDIT
-    # --------------------------------------------------------------------------
-    if st.session_state["show_evidence"]:
+    # MODULE 0: BYOK LIVE LLM INTELLIGENCE SEARCH & CUSTOM QUERY CONSOLE
+    if st.session_state["show_llm_search"]:
         st.markdown("<div class='clean-card'>", unsafe_allow_html=True)
-        ds_col1, ds_col2 = st.columns([0.65, 0.35])
-        with ds_col1:
-            st.markdown(f"### Three-Way Evidence Cross-Examination — {focus_row['Name']} ({focus_row['Ticker']})")
-            st.caption(
-                f"Hugging Face Models: **{focus_row['HF_Models']:,}** ({focus_row['HF_Downloads']:,} downloads)  |  "
-                f"OpenAlex AI Papers: **{focus_row['OpenAlex_Papers']:,}** ({focus_row['OpenAlex_Citations']:,} citations)  |  "
-                f"GitHub Repos: **{focus_row['GitHub_Repos']:,}** (★ {focus_row['GitHub_Stars']:,})"
+        top_s1, top_s2 = st.columns([0.68, 0.32], gap="medium")
+        with top_s1:
+            st.markdown(
+                f"### BYOK Multi-LLM Live Intelligence Search · {focus_row['Name']} ({focus_row['Ticker']})"
             )
-        with ds_col2:
+            st.caption(
+                f"Active Engine: **{llm_cfg['provider']}** (`{llm_cfg['model']}`) · Status: **{llm_cfg['key_source']}** · "
+                "Enter your API key in the sidebar or top bar to query OpenAI, Perplexity Sonar (Live Web Search), DeepSeek, Gemini, or Claude."
+            )
+        with top_s2:
             if st.button(
-                f"⚡ Run DeepSeek Live Technical Audit ({focus_row['Ticker']})",
+                f"Re-Score {focus_row['Ticker']} with {llm_cfg['provider']} Audit",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
             ):
-                with st.spinner(f"Calling DeepSeek API (`deepseek-chat`) to cross-examine {focus_row['Name']}..."):
+                with st.spinner(f"Running live {llm_cfg['provider']} ({llm_cfg['model']}) technical audit on {focus_row['Name']}..."):
                     raw_rec = focus_row["Raw_Record"]
                     base_sc = score_three_way_evidence(raw_rec, weights=active_weights)
                     live_syn = run_deepseek_technical_audit(
@@ -1220,7 +1813,145 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
                         ticker=focus_row["Ticker"],
                         raw_evidence=raw_rec,
                         base_scores=base_sc,
-                        api_key=env_key,
+                        api_key=llm_cfg["api_key"],
+                        provider=llm_cfg["provider"],
+                        model=llm_cfg["model"],
+                        base_url=llm_cfg["base_url"],
+                    )
+                    raw_rec["audit_synthesis"] = live_syn
+                    store.upsert_company(raw_rec)
+                    st.rerun()
+
+        preset_q1, preset_q2, preset_q3 = st.columns(3, gap="small")
+        default_q_key = f"custom_llm_query_{focus_row['Ticker']}"
+        if default_q_key not in st.session_state:
+            st.session_state[default_q_key] = (
+                f"Search and evaluate {focus_row['Name']} ({focus_row['Ticker']}) AI CapEx efficiency, "
+                f"open-source/research moat vs. competitors, and key engineering bottlenecks."
+            )
+
+        with preset_q1:
+            if st.button("Preset: AI CapEx vs. Real Code Moat", width="stretch"):
+                st.session_state[default_q_key] = (
+                    f"Analyze {focus_row['Name']} ({focus_row['Ticker']}) recent AI CapEx and R&D spending: "
+                    f"how much converts into proprietary silicon/models vs. third-party API wrappers?"
+                )
+                st.rerun()
+        with preset_q2:
+            if st.button("Preset: Developer Friction & Tech Debt", width="stretch"):
+                st.session_state[default_q_key] = (
+                    f"Search engineering community sentiment and technical architecture for {focus_row['Name']} ({focus_row['Ticker']}): "
+                    f"what are the primary software bottlenecks, outsourcing risks, or execution advantages?"
+                )
+                st.rerun()
+        with preset_q3:
+            if st.button("Preset: 2026 Valuation & ROIC Catalyst", width="stretch"):
+                st.session_state[default_q_key] = (
+                    f"What are the most critical technical and financial catalysts for {focus_row['Name']} ({focus_row['Ticker']}) "
+                    f"that justify a higher or lower Fair P/E multiple under R&D capitalization?"
+                )
+                st.rerun()
+
+        q_in_col, q_btn_col = st.columns([0.76, 0.24], gap="small")
+        with q_in_col:
+            custom_research_q = st.text_input(
+                "Custom Research Prompt / Information Search Query:",
+                value=st.session_state[default_q_key],
+                label_visibility="collapsed",
+            )
+            st.session_state[default_q_key] = custom_research_q
+        with q_btn_col:
+            run_search_btn = st.button(
+                f"Search with {llm_cfg['provider']} →",
+                type="primary",
+                width="stretch",
+            )
+
+        search_cache_key = f"llm_search_result_{focus_row['Ticker']}"
+        if run_search_btn:
+            with st.spinner(f"Querying {llm_cfg['provider']} ({llm_cfg['model']}) with grounded telemetry for {focus_row['Ticker']}..."):
+                raw_rec = focus_row["Raw_Record"]
+                base_sc = score_three_way_evidence(raw_rec, weights=active_weights)
+                st.session_state[search_cache_key] = run_custom_llm_company_search(
+                    company_name=focus_row["Name"],
+                    ticker=focus_row["Ticker"],
+                    query=custom_research_q,
+                    raw_evidence=raw_rec,
+                    base_scores=base_sc,
+                    api_key=llm_cfg["api_key"],
+                    provider=llm_cfg["provider"],
+                    model=llm_cfg["model"],
+                    base_url=llm_cfg["base_url"],
+                )
+
+        if search_cache_key in st.session_state:
+            s_res = st.session_state[search_cache_key]
+            st.markdown(
+                f"""
+                <div class="summary-verdict" style="margin-top:0.65rem;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;">
+                        <span style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;font-weight:600;">
+                            {html.escape(str(s_res.get('mode', '')))}
+                        </span>
+                        <span style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;opacity:0.75;">
+                            Query: {html.escape(str(s_res.get('query', ''))[:85])}
+                        </span>
+                    </div>
+                    <div style="font-size:1.0rem;font-weight:600;margin-bottom:0.55rem;">
+                        {html.escape(str(s_res.get('headline_answer', '')))}
+                    </div>
+                    <div style="font-size:0.9rem;">
+                        <b>Capital Allocation Implication:</b> {html.escape(str(s_res.get('investment_implication', '')))}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            f_col1, f_col2 = st.columns([0.58, 0.42], gap="medium")
+            with f_col1:
+                st.markdown("**Key Analytical Findings**")
+                for bullet in s_res.get("key_findings", []):
+                    st.markdown(f"- {bullet}")
+                if s_res.get("citations"):
+                    st.markdown("**Live Web Search Citations**")
+                    for cite_url in s_res["citations"]:
+                        st.markdown(f"- [{cite_url}]({cite_url})")
+            with f_col2:
+                st.markdown("**Verified Technical Signals**")
+                st.markdown(_render_pills(s_res.get("technical_signals", []), "tag-pos"), unsafe_allow_html=True)
+                st.markdown("**Execution & Valuation Risk Signals**")
+                st.markdown(_render_pills(s_res.get("risk_signals", []), "tag-neg"), unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if st.session_state["show_evidence"]:
+        st.markdown("<div class='clean-card'>", unsafe_allow_html=True)
+        ds_col1, ds_col2 = st.columns([0.65, 0.35])
+        with ds_col1:
+            st.markdown(f"### Three-Way Evidence Cross-Examination · {focus_row['Name']} ({focus_row['Ticker']})")
+            st.caption(
+                f"Hugging Face Models: **{focus_row['HF_Models']:,}** ({focus_row['HF_Downloads']:,} downloads)  ·  "
+                f"OpenAlex AI Papers: **{focus_row['OpenAlex_Papers']:,}** ({focus_row['OpenAlex_Citations']:,} citations)  ·  "
+                f"GitHub Repositories: **{focus_row['GitHub_Repos']:,}** ({focus_row['GitHub_Stars']:,} stars)"
+            )
+        with ds_col2:
+            if st.button(
+                f"Run {llm_cfg['provider']} Live Technical Audit ({focus_row['Ticker']})",
+                type="primary",
+                width="stretch",
+            ):
+                with st.spinner(f"Calling {llm_cfg['provider']} (`{llm_cfg['model']}`) to cross-examine {focus_row['Name']}..."):
+                    raw_rec = focus_row["Raw_Record"]
+                    base_sc = score_three_way_evidence(raw_rec, weights=active_weights)
+                    live_syn = run_deepseek_technical_audit(
+                        company_name=focus_row["Name"],
+                        ticker=focus_row["Ticker"],
+                        raw_evidence=raw_rec,
+                        base_scores=base_sc,
+                        api_key=llm_cfg["api_key"],
+                        provider=llm_cfg["provider"],
+                        model=llm_cfg["model"],
+                        base_url=llm_cfg["base_url"],
                     )
                     raw_rec["audit_synthesis"] = live_syn
                     store.upsert_company(raw_rec)
@@ -1228,49 +1959,46 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
 
         ev1, ev2, ev3 = st.columns(3, gap="medium")
         with ev1:
-            st.markdown(f"#### 1. Filing Claims (Score: {focus_row['Claim_Score']:.1f})")
-            with st.popover("ⓘ How is Claim Score (S_claim) calculated?"):
+            st.markdown(f"#### Filing Claims (Score: {focus_row['Claim_Score']:.1f})")
+            with st.popover("Methodology: Claim Score (S_claim)"):
                 st.markdown(
                     "Measures the density of high-profile AI commitments (`GenAI Platform`, `Autonomous Agents`, `Foundation Model`, `AI-First`) across SEC 10-K/20-F filings and official annual reports on a `0–100` scale."
                 )
             st.markdown(f"<div class='quote-box'>{html.escape(focus_row['Filing_Text'])}</div>", unsafe_allow_html=True)
-            st.markdown("**Matched Claim Keywords:**")
+            st.markdown("**Matched Claim Keywords**")
             st.markdown(_render_pills(focus_row["Matched_Claims"], "tag-info"), unsafe_allow_html=True)
 
         with ev2:
-            st.markdown(f"#### 2. Technical Proof (Score: {focus_row['Proof_Score']:.1f})")
-            with st.popover("ⓘ How is Proof Score (S_proof) calculated?"):
+            st.markdown(f"#### Technical Proof (Score: {focus_row['Proof_Score']:.1f})")
+            with st.popover("Methodology: Proof Score (S_proof)"):
                 st.markdown(
                     "Synthesizes **65% Contemporary AI Proof** (Hugging Face open-weight models & downloads, OpenAlex research citations, and `CUDA/TensorRT/vLLM/PyTorch` stack signals) + **35% Computer Systems Proof** (GitHub engineering velocity and `Rust/C++20/RISC-V/Distributed Systems` stack density)."
                 )
             for q in focus_row["Tech_Texts"]:
                 st.markdown(f"<div class='quote-box'>{html.escape(str(q))}</div>", unsafe_allow_html=True)
-            st.markdown("**Contemporary AI Signals (65% Weight):**")
+            st.markdown("**Contemporary AI Signals (65% Weight)**")
             st.markdown(_render_pills(focus_row["Matched_AI"], "tag-pos"), unsafe_allow_html=True)
-            st.markdown("**Computer Systems Signals (35% Weight):**")
+            st.markdown("**Computer Systems Signals (35% Weight)**")
             st.markdown(_render_pills(focus_row["Matched_Systems"], "tag-pos"), unsafe_allow_html=True)
 
         with ev3:
-            st.markdown(f"#### 3. Community Telemetry (Score: {focus_row['Friction_Score']:.1f})")
-            with st.popover("ⓘ How is Friction Score (S_friction) calculated?"):
+            st.markdown(f"#### Community Telemetry (Score: {focus_row['Friction_Score']:.1f})")
+            with st.popover("Methodology: Friction Score (S_friction)"):
                 st.markdown(
                     "Captures anonymous developer telemetry from Hacker News and Reddit engineering forums, weighting **60% AI-Washing & Wrapper signals** (`API Wrapper`, `Rebranded BI`) and **40% Bureaucracy & Outsourcing friction** (`Dienstleistersteuerung`, `SAFe Agile Coach`)."
                 )
             for q in focus_row["Insider_Texts"]:
                 st.markdown(f"<div class='quote-box'>{html.escape(str(q))}</div>", unsafe_allow_html=True)
-            st.markdown("**AI-Washing / Wrapper Signals:**")
+            st.markdown("**AI-Washing & Wrapper Signals**")
             st.markdown(_render_pills(focus_row["Matched_Washing"], "tag-neg"), unsafe_allow_html=True)
-            st.markdown("**Bureaucracy & Tech Debt Signals:**")
+            st.markdown("**Bureaucracy & Tech Debt Signals**")
             st.markdown(_render_pills(focus_row["Matched_Bloat"], "tag-neg"), unsafe_allow_html=True)
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # --------------------------------------------------------------------------
-    # EXPANDABLE PANEL 2: DAMODARAN ACCOUNTING SCHEDULE & GLOBAL PEER TABLE
-    # --------------------------------------------------------------------------
     if st.session_state["show_accounting"]:
         st.markdown("<div class='clean-card'>", unsafe_allow_html=True)
-        st.markdown(f"### Damodaran R&D Capitalization Accounting Bridge — {focus_row['Ticker']}")
+        st.markdown(f"### Damodaran R&D Capitalization Accounting Bridge · {focus_row['Ticker']}")
         sym = focus_row["CurrSym"]
         acc_df = pd.DataFrame(
             [
@@ -1296,9 +2024,9 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
                 },
             ]
         )
-        st.dataframe(acc_df, use_container_width=True, hide_index=True)
+        st.dataframe(acc_df, width="stretch", hide_index=True)
 
-        st.markdown("### Cross-Sectional Global Peer Comparison Table")
+        st.markdown("### Cross-Sectional Global Peer Comparison Ledger")
         peer_df = df[
             [
                 "Ticker",
@@ -1319,23 +2047,20 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
                 "Regime",
             ]
         ].sort_values(by="Proof_Score", ascending=False)
-        st.dataframe(peer_df, use_container_width=True, hide_index=True)
+        st.dataframe(peer_df, width="stretch", hide_index=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # --------------------------------------------------------------------------
-    # EXPANDABLE PANEL 3: AUTHOR CONVICTION NOTE & CALIBRATION WORKBENCH
-    # --------------------------------------------------------------------------
     if st.session_state["show_workbench"]:
         st.markdown("<div class='clean-card'>", unsafe_allow_html=True)
-        st.markdown(f"### Personal Analyst Thesis & Calibration Workbench — {focus_row['Ticker']}")
+        st.markdown(f"### Personal Analyst Thesis & Calibration Schedule · {focus_row['Ticker']}")
         wb_l, wb_r = st.columns([0.55, 0.45], gap="large")
         with wb_l:
             edited_note = st.text_area(
-                f"Your Personal Analyst Thesis for {focus_row['Name']} ({focus_row['Ticker']}):",
+                f"Analyst Thesis for {focus_row['Name']} ({focus_row['Ticker']}):",
                 value=focus_row["Author_Thesis"],
                 height=140,
             )
-            if st.button("Save Personal Thesis to SQLite Database", type="primary"):
+            if st.button("Save Thesis to SQLite Database", type="primary"):
                 store.save_author_note(focus_row["Ticker"], edited_note)
                 st.success(f"Saved personal thesis for {focus_row['Ticker']}.")
                 st.rerun()
@@ -1347,13 +2072,13 @@ def render_terminal_view(store: AuditStorage, theme_mode: str) -> None:
                     for k, v in SECTOR_AMORTIZATION_YEARS.items()
                 ]
             )
-            st.dataframe(amort_df, use_container_width=True, hide_index=True, height=210)
+            st.dataframe(amort_df, width="stretch", hide_index=True, height=210)
         st.markdown("</div>", unsafe_allow_html=True)
 
 
 def main() -> None:
     st.set_page_config(
-        page_title="CapEx-to-Code | Global R&D Capitalization & AI Audit",
+        page_title="CapEx-to-Code | Global R&D Capitalization & Multi-LLM AI Audit",
         layout="wide",
         initial_sidebar_state="expanded",
     )

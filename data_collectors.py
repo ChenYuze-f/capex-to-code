@@ -487,10 +487,14 @@ def run_full_company_audit(
     api_key: Optional[str] = None,
     weights: Optional[Dict[str, float]] = None,
     progress_callback: Optional[Callable[[int, str], None]] = None,
+    provider: str = "DeepSeek",
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    custom_focus: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Execute the end-to-end telemetry collection, 3-way AI reality scoring,
-    optional DeepSeek Technical Audit, and Damodaran R&D capitalization valuation.
+    optional Multi-Provider BYOK LLM Technical Audit, and Damodaran R&D capitalization valuation.
     """
     raw = collect_live_company_telemetry(ticker, progress_callback=progress_callback)
     scores = score_three_way_evidence(raw, weights=weights)
@@ -501,6 +505,10 @@ def run_full_company_audit(
         raw_evidence=raw,
         base_scores=scores,
         api_key=api_key if use_deepseek else "",
+        provider=provider,
+        model=model,
+        base_url=base_url,
+        custom_focus=custom_focus,
     )
 
     # Apply bounded DeepSeek Technical Mode adjustments if active

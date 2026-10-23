@@ -1,12 +1,14 @@
 """
-Three-Way AI Reality Cross-Examination & DeepSeek Technical Audit Engine.
+Three-Way AI Reality Cross-Examination & Multi-Provider BYOK LLM Audit Engine.
 
 Evaluates:
   1. Executive Filing Claim Score (S_claim)
   2. Verifiable Technical Proof Score (S_proof = 65% Contemporary AI + 35% Systems)
   3. Insider Friction & AI-Washing Penalty Score (S_friction)
   4. AI-Washing Divergence Index (AWDI) & Productive R&D Conversion Rate (eta_conv)
-  5. Optional Live DeepSeek Technical Audit (via https://api.deepseek.com/chat/completions)
+  5. Extensible Multi-Provider BYOK LLM Technical Audit & Live Intelligence Search
+     (Supports DeepSeek, OpenAI, Perplexity Sonar Web Search, Google Gemini,
+      Anthropic Claude, and any OpenRouter / Custom OpenAI-Compatible Endpoint)
 """
 
 from __future__ import annotations
@@ -28,6 +30,75 @@ from analyst_calibration import (
     DEFAULT_MODEL_WEIGHTS,
     SYSTEMS_ENGINEERING_SIGNALS,
 )
+
+
+LLM_PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
+    "DeepSeek": {
+        "base_url": "https://api.deepseek.com/chat/completions",
+        "default_model": "deepseek-chat",
+        "models": ["deepseek-chat", "deepseek-reasoner"],
+        "env_var": "DEEPSEEK_API_KEY",
+        "protocol": "openai",
+        "supports_web_search": False,
+        "badge": "DeepSeek V3 / R1",
+        "key_placeholder": "sk-...",
+    },
+    "OpenAI": {
+        "base_url": "https://api.openai.com/v1/chat/completions",
+        "default_model": "gpt-4o",
+        "models": ["gpt-4o", "gpt-4o-mini", "o3-mini"],
+        "env_var": "OPENAI_API_KEY",
+        "protocol": "openai",
+        "supports_web_search": False,
+        "badge": "GPT-4o / o3-mini",
+        "key_placeholder": "sk-proj-...",
+    },
+    "Perplexity Sonar (Web Search)": {
+        "base_url": "https://api.perplexity.ai/chat/completions",
+        "default_model": "sonar-pro",
+        "models": ["sonar-pro", "sonar-reasoning-pro", "sonar"],
+        "env_var": "PERPLEXITY_API_KEY",
+        "protocol": "openai",
+        "supports_web_search": True,
+        "badge": "Live Web Search + Citations",
+        "key_placeholder": "pplx-...",
+    },
+    "Google Gemini": {
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        "default_model": "gemini-2.5-flash",
+        "models": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+        "env_var": "GEMINI_API_KEY",
+        "protocol": "openai",
+        "supports_web_search": False,
+        "badge": "Gemini 2.5 Flash / Pro",
+        "key_placeholder": "AIzaSy...",
+    },
+    "Anthropic Claude": {
+        "base_url": "https://api.anthropic.com/v1/messages",
+        "default_model": "claude-3-5-sonnet-latest",
+        "models": ["claude-3-5-sonnet-latest", "claude-3-7-sonnet-latest", "claude-3-5-haiku-latest"],
+        "env_var": "ANTHROPIC_API_KEY",
+        "protocol": "anthropic",
+        "supports_web_search": False,
+        "badge": "Claude 3.5 / 3.7 Sonnet",
+        "key_placeholder": "sk-ant-...",
+    },
+    "OpenRouter / Custom Endpoint": {
+        "base_url": "https://openrouter.ai/api/v1/chat/completions",
+        "default_model": "perplexity/sonar-pro",
+        "models": [
+            "perplexity/sonar-pro",
+            "anthropic/claude-3.5-sonnet",
+            "deepseek/deepseek-r1",
+            "openai/gpt-4o",
+        ],
+        "env_var": "OPENROUTER_API_KEY",
+        "protocol": "openai",
+        "supports_web_search": True,
+        "badge": "OpenAI-Compatible Gateway",
+        "key_placeholder": "sk-or-v1-...",
+    },
+}
 
 
 def _clamp(val: float, low: float, high: float) -> float:
@@ -53,12 +124,15 @@ def _join_texts(val: Any) -> str:
     return ""
 
 
-def load_deepseek_api_key() -> str:
+def load_provider_api_key(provider: str = "DeepSeek") -> str:
     """
-    Load DEEPSEEK_API_KEY from environment variables or local `.env` file.
+    Load the API key for a given LLM provider from environment variables or local `.env` file.
     Never exposes or hardcodes credentials in source code.
     """
-    env_val = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    preset = LLM_PROVIDER_PRESETS.get(provider, LLM_PROVIDER_PRESETS["DeepSeek"])
+    env_var = str(preset.get("env_var", "DEEPSEEK_API_KEY"))
+
+    env_val = os.environ.get(env_var, "").strip()
     if env_val:
         return env_val
 
@@ -67,11 +141,19 @@ def load_deepseek_api_key() -> str:
         try:
             for line in env_path.read_text(encoding="utf-8").splitlines():
                 stripped = line.strip()
-                if stripped.startswith("DEEPSEEK_API_KEY="):
+                if stripped.startswith(f"{env_var}="):
                     return stripped.split("=", 1)[1].strip().strip('"').strip("'")
         except Exception:
             return ""
     return ""
+
+
+def load_deepseek_api_key() -> str:
+    """
+    Load DEEPSEEK_API_KEY from environment variables or local `.env` file.
+    Never exposes or hardcodes credentials in source code.
+    """
+    return load_provider_api_key("DeepSeek")
 
 
 def score_three_way_evidence(
@@ -249,22 +331,115 @@ def _build_deterministic_synthesis(
     }
 
 
+def _invoke_llm_json(
+    system_msg: str,
+    user_payload: str,
+    api_key: str,
+    provider: str = "DeepSeek",
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    max_tokens: int = 550,
+    timeout: float = 10.0,
+) -> Tuple[Optional[Dict[str, Any]], List[str], str, str]:
+    """
+    Unified multi-provider LLM JSON invocation supporting both OpenAI-compatible
+    `/chat/completions` endpoints (DeepSeek, OpenAI, Perplexity Sonar, Gemini, OpenRouter)
+    and Anthropic's `/v1/messages` protocol.
+    Returns (parsed_json_or_none, citations_list, resolved_provider, resolved_model).
+    """
+    preset = LLM_PROVIDER_PRESETS.get(provider, LLM_PROVIDER_PRESETS["DeepSeek"])
+    resolved_url = (base_url or preset["base_url"]).strip()
+    resolved_model = (model or preset["default_model"]).strip()
+    protocol = preset.get("protocol", "openai")
+    if base_url and "anthropic.com" in resolved_url:
+        protocol = "anthropic"
+
+    citations: List[str] = []
+
+    if protocol == "anthropic":
+        response = requests.post(
+            resolved_url,
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": resolved_model,
+                "max_tokens": max_tokens,
+                "temperature": 0.1,
+                "system": system_msg,
+                "messages": [{"role": "user", "content": user_payload}],
+            },
+            timeout=timeout,
+        )
+        if response.status_code != 200:
+            return None, [], provider, resolved_model
+        data = response.json()
+        blocks = data.get("content") or []
+        content = ""
+        for blk in blocks:
+            if isinstance(blk, dict) and blk.get("type") == "text":
+                content += str(blk.get("text", ""))
+        content = content.strip()
+    else:
+        response = requests.post(
+            resolved_url,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": resolved_model,
+                "messages": [
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_payload},
+                ],
+                "temperature": 0.1,
+                "max_tokens": max_tokens,
+            },
+            timeout=timeout,
+        )
+        if response.status_code != 200:
+            return None, [], provider, resolved_model
+        data = response.json()
+        content = data["choices"][0]["message"]["content"].strip()
+        raw_citations = data.get("citations") or []
+        if isinstance(raw_citations, list):
+            citations = [str(c) for c in raw_citations[:6] if c]
+
+    cleaned = re.sub(r"^```(?:json)?\s*", "", content)
+    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    # Extract JSON object if reasoning models prepend <think> blocks
+    cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL).strip()
+    json_match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+    if json_match:
+        cleaned = json_match.group(0)
+
+    parsed = json.loads(cleaned)
+    return parsed, citations, provider, resolved_model
+
+
 def run_deepseek_technical_audit(
     company_name: str,
     ticker: str,
     raw_evidence: Dict[str, Any],
     base_scores: Dict[str, Any],
     api_key: Optional[str] = None,
+    provider: str = "DeepSeek",
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    custom_focus: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Execute a live DeepSeek Technical Audit (`deepseek-chat`) cross-examining
-    management filing claims against technical telemetry and engineer forum quotes.
+    Execute a live Multi-Provider BYOK Technical Audit (defaulting to DeepSeek `deepseek-chat`)
+    cross-examining management filing claims against technical telemetry and engineer forum quotes.
     """
-    resolved_key = (api_key or load_deepseek_api_key()).strip()
+    resolved_key = (api_key if api_key is not None else load_provider_api_key(provider)).strip()
     if not resolved_key:
         return _build_deterministic_synthesis(company_name, ticker, base_scores)
 
-    prompt_payload = {
+    prompt_payload: Dict[str, Any] = {
         "company": company_name,
         "ticker": ticker,
         "deterministic_scores": {
@@ -283,6 +458,8 @@ def run_deepseek_technical_audit(
         "tech_stack_evidence": _join_texts(raw_evidence.get("tech_texts", []))[:700],
         "insider_forum_quotes": _join_texts(raw_evidence.get("insider_texts", []))[:900],
     }
+    if custom_focus and custom_focus.strip():
+        prompt_payload["user_custom_audit_focus"] = custom_focus.strip()[:400]
 
     system_msg = (
         "You are an institutional quantitative equity & AI technical due diligence auditor. "
@@ -295,34 +472,29 @@ def run_deepseek_technical_audit(
     )
 
     try:
-        response = requests.post(
-            "https://api.deepseek.com/chat/completions",
-            headers={
-                "Authorization": f"Bearer {resolved_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": system_msg},
-                    {"role": "user", "content": json.dumps(prompt_payload, ensure_ascii=False)},
-                ],
-                "temperature": 0.1,
-                "max_tokens": 500,
-            },
-            timeout=8.0,
+        parsed, citations, used_provider, used_model = _invoke_llm_json(
+            system_msg=system_msg,
+            user_payload=json.dumps(prompt_payload, ensure_ascii=False),
+            api_key=resolved_key,
+            provider=provider,
+            model=model,
+            base_url=base_url,
+            max_tokens=550,
+            timeout=10.0,
         )
-        if response.status_code != 200:
+        if not parsed:
             return _build_deterministic_synthesis(company_name, ticker, base_scores)
 
-        content = response.json()["choices"][0]["message"]["content"].strip()
-        # Strip optional markdown code fences
-        cleaned = re.sub(r"^```(?:json)?\s*", "", content)
-        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
-        parsed = json.loads(cleaned)
+        mode_label = (
+            "DeepSeek Technical Mode (Live LLM)"
+            if used_provider == "DeepSeek" and (not model or model == "deepseek-chat")
+            else f"{used_provider} [{used_model}] (Live LLM)"
+        )
 
-        return {
-            "mode": "DeepSeek Technical Mode (Live LLM)",
+        result = {
+            "mode": mode_label,
+            "provider": used_provider,
+            "model": used_model,
             "claim_adjustment": round(_clamp(float(parsed.get("claim_adjustment", 0.0)), -10.0, 10.0), 1),
             "proof_adjustment": round(_clamp(float(parsed.get("proof_adjustment", 0.0)), -10.0, 10.0), 1),
             "friction_adjustment": round(_clamp(float(parsed.get("friction_adjustment", 0.0)), -10.0, 10.0), 1),
@@ -331,5 +503,133 @@ def run_deepseek_technical_audit(
             "ai_washing_red_flags": list(parsed.get("ai_washing_red_flags", []))[:8],
             "executive_verdict": str(parsed.get("executive_verdict", "")),
         }
+        if citations:
+            result["citations"] = citations
+        return result
     except Exception:
         return _build_deterministic_synthesis(company_name, ticker, base_scores)
+
+
+def run_custom_llm_company_search(
+    company_name: str,
+    ticker: str,
+    query: str,
+    raw_evidence: Dict[str, Any],
+    base_scores: Dict[str, Any],
+    api_key: Optional[str] = None,
+    provider: str = "DeepSeek",
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Execute a user-driven Live Intelligence Search & Due Diligence Query on a company
+    using the user's BYOK LLM provider/model and grounded multi-source telemetry.
+    Falls back to a structured deterministic telemetry brief if no API key is configured.
+    """
+    clean_q = (query or "").strip() or (
+        f"Evaluate {company_name} ({ticker}) AI CapEx efficiency, open-source/research moat, and execution bottlenecks."
+    )
+    resolved_key = (api_key if api_key is not None else load_provider_api_key(provider)).strip()
+    preset = LLM_PROVIDER_PRESETS.get(provider, LLM_PROVIDER_PRESETS["DeepSeek"])
+    resolved_model = (model or preset["default_model"]).strip()
+
+    # Deterministic fallback when user has not entered an API key
+    if not resolved_key:
+        synth = _build_deterministic_synthesis(company_name, ticker, base_scores)
+        return {
+            "status": "deterministic_fallback",
+            "mode": "Local Telemetry Synthesis (Add API Key for Live LLM Generation)",
+            "provider": provider,
+            "model": resolved_model,
+            "query": clean_q,
+            "headline_answer": synth["primary_contradiction"],
+            "key_findings": [
+                f"Filing Claim Intensity: {base_scores.get('claim_score', 0):.1f}/100 vs. Verifiable Technical Proof: {base_scores.get('proof_score', 0):.1f}/100.",
+                f"Telemetry Footprint: {raw_evidence.get('hf_models_count', 0)} Hugging Face models, {raw_evidence.get('openalex_papers_count', 0)} OpenAlex papers, {raw_evidence.get('github_repos_count', 0)} GitHub repositories.",
+                f"Productive R&D Conversion Rate (η_conv): {float(base_scores.get('conversion_rate', 0.5)) * 100:.0f}% (AWDI {base_scores.get('awdi', 0):.1f}).",
+            ],
+            "technical_signals": synth["verified_ai_capabilities"],
+            "risk_signals": synth["ai_washing_red_flags"],
+            "investment_implication": synth["executive_verdict"],
+            "citations": [],
+        }
+
+    search_payload = {
+        "target_company": f"{company_name} ({ticker})",
+        "research_question": clean_q,
+        "grounded_telemetry": {
+            "scores": {
+                "claim_score": base_scores.get("claim_score"),
+                "proof_score": base_scores.get("proof_score"),
+                "friction_score": base_scores.get("friction_score"),
+                "awdi": base_scores.get("awdi"),
+                "conversion_rate": base_scores.get("conversion_rate"),
+            },
+            "artifacts": {
+                "hf_models_count": raw_evidence.get("hf_models_count", 0),
+                "hf_downloads": raw_evidence.get("hf_downloads", 0),
+                "openalex_papers_count": raw_evidence.get("openalex_papers_count", 0),
+                "github_repos_count": raw_evidence.get("github_repos_count", 0),
+            },
+            "filing_context": _join_texts(raw_evidence.get("filing_text", ""))[:800],
+            "tech_stack_context": _join_texts(raw_evidence.get("tech_texts", []))[:700],
+            "engineer_community_context": _join_texts(raw_evidence.get("insider_texts", []))[:800],
+        },
+    }
+
+    system_msg = (
+        "You are an institutional AI & quantitative equity research intelligence engine. "
+        "Answer the user's research question about the target company by combining your latest "
+        "knowledge/web search with the grounded telemetry provided. Respond ONLY with a valid JSON "
+        "object containing keys: headline_answer (2-3 sentence direct analytical answer), "
+        "key_findings (list of 3-4 specific factual bullet strings with numbers/stack details), "
+        "technical_signals (list of verified technical stack/model keywords), "
+        "risk_signals (list of execution or valuation risk keywords), and "
+        "investment_implication (1-2 sentence capital allocation conclusion)."
+    )
+
+    try:
+        parsed, citations, used_provider, used_model = _invoke_llm_json(
+            system_msg=system_msg,
+            user_payload=json.dumps(search_payload, ensure_ascii=False),
+            api_key=resolved_key,
+            provider=provider,
+            model=model,
+            base_url=base_url,
+            max_tokens=700,
+            timeout=12.0,
+        )
+        if not parsed:
+            raise ValueError("Empty LLM response")
+
+        return {
+            "status": "live_llm",
+            "mode": f"Live BYOK Intelligence · {used_provider} ({used_model})",
+            "provider": used_provider,
+            "model": used_model,
+            "query": clean_q,
+            "headline_answer": str(parsed.get("headline_answer", "")),
+            "key_findings": [str(x) for x in list(parsed.get("key_findings", []))[:5]],
+            "technical_signals": [str(x) for x in list(parsed.get("technical_signals", []))[:8]],
+            "risk_signals": [str(x) for x in list(parsed.get("risk_signals", []))[:8]],
+            "investment_implication": str(parsed.get("investment_implication", "")),
+            "citations": citations,
+        }
+    except Exception:
+        synth = _build_deterministic_synthesis(company_name, ticker, base_scores)
+        return {
+            "status": "error_fallback",
+            "mode": f"Telemetry Fallback ({provider} endpoint unreachable or invalid key)",
+            "provider": provider,
+            "model": resolved_model,
+            "query": clean_q,
+            "headline_answer": synth["primary_contradiction"],
+            "key_findings": [
+                f"Filing Claim Intensity: {base_scores.get('claim_score', 0):.1f}/100 vs. Verifiable Technical Proof: {base_scores.get('proof_score', 0):.1f}/100.",
+                f"Telemetry Footprint: {raw_evidence.get('hf_models_count', 0)} Hugging Face models, {raw_evidence.get('openalex_papers_count', 0)} OpenAlex papers, {raw_evidence.get('github_repos_count', 0)} GitHub repositories.",
+            ],
+            "technical_signals": synth["verified_ai_capabilities"],
+            "risk_signals": synth["ai_washing_red_flags"],
+            "investment_implication": synth["executive_verdict"],
+            "citations": [],
+        }
